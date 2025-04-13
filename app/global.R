@@ -1,7 +1,6 @@
 # ----------------------------------------------------------
 # Setup: Environment Configuration
 # ----------------------------------------------------------
-
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 rm(list = ls())
 gc()
@@ -30,71 +29,20 @@ library(stringr)         # String manipulation utilities
 library(ranger)          # Fast implementation of Random Forests
 library(readr)           # Fast and tidy reading of CSV and text files
 library(Polychrome)      # Load Polychrome for generating visually distinct colour palettes
+library(here)            # Used for portability of locating data in project
 
 # Set seed for reproducibility
 set.seed(123)  # This initial seed is sufficient for reproducibility
 
 # ----------------------------------------------------------
-# Load and Combine UCI Wine Quality Datasets
+# Load the UCI Wine Quality and Wine Reviews Datasets
 # ----------------------------------------------------------
 
 
-wine_red <- read_delim("../data/winequality-red.csv", delim = ";")
-wine_white <- read_delim("../data/winequality-white.csv", delim = ";")
-
-wine_red$wine_colour <- "Red"
-wine_white$wine_colour <- "White"
-
-# Combine red and white datasets into a unified dataframe and clean column names
-vinho_verde_data <- bind_rows(wine_red, wine_white) %>%
-    rename_with(~ gsub(" ", "_", .))
-
-# ----------------------------------------------------------
-# Load Wine Reviews Dataset
-# ----------------------------------------------------------
-wine_reviews <- read_delim("../data/winemag.csv")
-
-# ----------------------------------------------------------
-# Provide logic for wine variety colours and Filter for Portugal
-# ----------------------------------------------------------
-
-# Define red and white varieties
-red_varieties <- c(
-    "Cabernet Sauvignon", "Merlot", "Pinot Noir", "Syrah", "Malbec", "Tempranillo", 
-    "Sangiovese", "Zinfandel", "Grenache", "Mourvèdre", "Touriga Nacional", "Baga", 
-    "Aragonez", "Tinta Roriz", "Touriga Franca", "Bobal", "Alfrocheiro", "Vinhão", 
-    "Argaman", "Graciano", "Garnacha Tintorera", "Tinta Amarela", "Alicante Bouschet", 
-    "Aragonês", "Baga-Touriga Nacional", "Bastardo", "Bordeaux-style Red Blend", 
-    "Cabernet Sauvignon and Tinta Roriz", "Cabernet Sauvignon-Syrah", "Castelão", 
-    "Espadeiro", "Jaen", "Madeira Blend", "Merlot-Syrah", "Moscatel Roxo", "Petit Verdot", 
-    "Petite Verdot", "Port", "Portuguese Red", "Portuguese Rosé", "Red Blend", 
-    "Rhône-style Red Blend", "Rosé", "Shiraz", "Sousão", "Tinta Barroca", "Tinta Francisca", 
-    "Tinta Negra Mole", "Touriga Nacional Blend", "Touriga Nacional-Cabernet Sauvignon", 
-    "Trincadeira"
-)
-white_varieties <- c(
-    "Chardonnay", "Sauvignon Blanc", "Riesling", "Pinot Grigio", "Viognier", "Gewürztraminer", 
-    "Alvarinho", "Encruzado", "Arinto", "Antão Vaz", "Loureiro", "Fernão Pires", "Albana", 
-    "Alvarinho-Chardonnay", "Avesso", "Azal", "Bical", "Bual", "Côdega do Larinho", "Cerceal", 
-    "Chenin Blanc", "Gewürztraminer-Riesling", "Gouveio", "Malmsey", "Malvasia", 
-    "Malvasia Fina", "Moscatel", "Moscatel Graúdo", "Muscat", "Pinot Blanc", 
-    "Portuguese Sparkling", "Portuguese White", "Rabigato", "Sémillon", "Sercial", "Siria", 
-    "Sparkling Blend", "Verdelho", "White Blend", "White Port", "Códega do Larinho"
-)
+vinho_verde_data <- readRDS("app/app_data/vinho_verde_data.rds")
+wine_reviews_portugal_clean <- readRDS("app/app_data/wine_reviews_portugal_clean.rds")
 
 
-
-# Filter for Portuguese wines and classify colour based on variety
-wine_reviews_portugal_clean <- wine_reviews %>% 
-    filter(country == "Portugal") %>%
-    mutate(wine_colour = case_when(
-        variety %in% red_varieties ~ "Red",
-        variety %in% white_varieties ~ "White",
-        TRUE ~ "Unknown"
-    )) %>%
-    rename(score = points, price_USD = price) %>%
-    dplyr::select(country, variety, wine_colour, score, price_USD, description) %>%
-    filter(!is.na(score), !is.na(price_USD))
 
 # ----------------------------------------------------------
 # Correlation between Price(USD) and Review Score (Raw and Log)

@@ -126,6 +126,7 @@ library(stringr)         # String manipulation utilities
 library(ranger)          # Fast implementation of Random Forests
 library(readr)           # Fast and tidy reading of CSV and text files
 library(Polychrome)      # Load Polychrome for generating visually distinct colour palettes
+library(here)            # Used for portability of locating data in project
 
 # Set seed for reproducibility
 set.seed(123)  # This initial seed is sufficient for reproducibility
@@ -139,8 +140,8 @@ set.seed(123)  # This initial seed is sufficient for reproducibility
 # ----------------------------------------------------------
 
 
-wine_red <- read_delim("../data/winequality-red.csv", delim = ";")
-wine_white <- read_delim("../data/winequality-white.csv", delim = ";")
+wine_red <- read_delim(here("data", "winequality-red.csv"), delim = ";")
+wine_white <- read_delim(here("data", "winequality-white.csv"), delim = ";")
 
 wine_red$wine_colour <- "Red"
 wine_white$wine_colour <- "White"
@@ -182,7 +183,7 @@ tribble(
 # ----------------------------------------------------------
 # Load Wine Reviews Dataset
 # ----------------------------------------------------------
-wine_reviews <- read_delim("../data/winemag.csv")
+wine_reviews <- read_delim(here("data", "winemag.csv"))
 
 # ----------------------------------------------------------
 # Provide logic for wine variety colours and Filter for Portugal
@@ -1005,7 +1006,7 @@ The findings are particularly relevant for industry stakeholders like **Treasury
 
 To explore the findings of this report through an interactive dashboard, please visit the deployed Shiny app below:
 
-[👉 Launch the Wine Quality Dashboard](https://jtes1610.shinyapps.io/wine-quality-dashboard/)
+[Launch the Wine Quality Dashboard](https://jtes1610.shinyapps.io/wine-quality-dashboard/)
 
 The app enables users to:
 - Predict wine quality using physicochemical attributes,

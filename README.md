@@ -31,6 +31,7 @@ Together, these datasets are used to explore the relationship between chemical a
 
 ------------------------------------------------------------------------
 
+## 📁 Folder Structure
 
 ``` text
 ODAT5011_Project/
@@ -38,14 +39,17 @@ ODAT5011_Project/
 │   ├── app.R              # Launch script (shinyApp(ui, server))
 │   ├── global.R           # Global setup: data, models, variables
 │   ├── server.R           # Server logic
-│   └── ui.R               # User interface layout
-├── data/                  # Raw datasets
+│   ├── ui.R               # User interface layout
+│   └── app_data/          # ✅ Pre-cleaned RDS files for app deployment
+│       ├── vinho_verde_data.rds
+│       └── wine_reviews_portugal_clean.rds
+├── data/                  # ✅ Raw datasets (CSV) for reproducibility
 │   ├── winequality-red.csv
 │   ├── winequality-white.csv
 │   └── winemag.csv
-├── scripts/               # Analytical report and supporting R code
+├── scripts/               # Quarto report and supporting R code
 │   └── ODAT5011_Wine_Report_Analysis.qmd
-├── README.md              # Project documentation
+├── README.md              # Project documentation and deployment info
 └── ODAT5011_Project.Rproj # RStudio project file
 ```
 
