@@ -182,3 +182,46 @@ preds <- predict(of_model, newdata = as.data.frame(vinho_verde_test_numeric))[[1
 preds_recoded <- factor(quality_levels[as.numeric(preds)], ordered = TRUE, levels = quality_levels)
 
 
+# ----------------------------------------------------------
+# Compute Feature Ranges for UI Inputs
+# ----------------------------------------------------------
+feature_ranges <- vinho_verde_data %>%
+    summarise(
+        fixed_acidity_min    = min(fixed_acidity),
+        fixed_acidity_max    = max(fixed_acidity),
+        volatile_acidity_min = min(volatile_acidity),
+        volatile_acidity_max = max(volatile_acidity),
+        citric_acid_min      = min(citric_acid),
+        citric_acid_max      = max(citric_acid),
+        residual_sugar_min   = min(residual_sugar),
+        residual_sugar_max   = max(residual_sugar),
+        chlorides_min        = min(chlorides),
+        chlorides_max        = max(chlorides),
+        free_sulfur_dioxide_min   = min(free_sulfur_dioxide),
+        free_sulfur_dioxide_max   = max(free_sulfur_dioxide),
+        total_sulfur_dioxide_min  = min(total_sulfur_dioxide),
+        total_sulfur_dioxide_max  = max(total_sulfur_dioxide),
+        density_min          = min(density),
+        density_max          = max(density),
+        pH_min               = min(pH),
+        pH_max               = max(pH),
+        sulphates_min        = min(sulphates),
+        sulphates_max        = max(sulphates),
+        alcohol_min          = min(alcohol),
+        alcohol_max          = max(alcohol)
+    )
+print(feature_ranges)
+
+# -------------------------------
+# Define Global Column Order for Outputs
+# -------------------------------
+desired_order_history <- c("Timestamp", "Alcohol", "Density", "Volatile Acidity", 
+                           "Chlorides", "Free Sulfur Dioxide", "Residual Sugar", 
+                           "Total Sulfur Dioxide", "Citric Acid", "Sulphates", 
+                           "Fixed Acidity", "pH", "Wine Colour", "Predicted Quality")
+
+desired_order_filtered <- c("Alcohol", "Volatile Acidity", "Density",  
+                            "Chlorides", "Free Sulfur Dioxide", "Residual Sugar", 
+                            "Total Sulfur Dioxide", "Citric Acid", "Sulphates", 
+                            "Fixed Acidity", "pH", "Wine Colour", "Quality")
+

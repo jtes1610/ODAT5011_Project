@@ -16,6 +16,83 @@ format:
       - https://use.fontawesome.com/releases/v5.0.6/css/all.css
 ---
 
+## Project Introduction
+
+The focus of this project is on evaluating and predicting **wine quality** by leveraging both structured and unstructured data sources.
+
+Drawing on datasets from the **UCI Machine Learning Repository** (Dua & Graff, 2017) and **Kaggle's WineMag critic reviews** (Zynicide, 2017), the analysis integrates machine learning models, statistical inference, and natural language processing (NLP) to uncover patterns that influence wine quality ratings. By combining physicochemical measurements with qualitative descriptions, the report aims to provide a multi-dimensional perspective on what constitutes a high-quality wine.
+
+The intended audience for this report includes not only academic's but also potential industry stakeholders such as **Treasury Wine Estates (TWE)** — a global wine company committed to data-informed decision-making in viticulture, marketing, and consumer experience.
+
+------------------------------------------------------------------------
+
+## Industry Context: Treasury Wine Estates (TWE)
+
+**Treasury Wine Estates (TWE)** is one of the world’s leading wine producers, with a portfolio that includes iconic brands such as Penfolds, Wolf Blass, and 19 Crimes. Known for its global footprint and premium positioning, TWE has demonstrated a strategic focus on innovation and analytics in both vineyard operations and market engagement (Treasury Wine Estates, 2024).
+
+### Why This Project Aligns with TWE’s Strategic Vision
+
+-   **Premium Brand Positioning:**\
+    This analysis supports TWE’s emphasis on product quality and brand differentiation by identifying key chemical and sensory factors linked to critic-rated wine excellence.
+
+-   **Market Intelligence Through Data:**\
+    By combining structured data (e.g. alcohol, pH, sulphates) with unstructured critic reviews, the report exemplifies a modern, data-driven approach to understanding wine attributes and consumer perceptions.
+
+-   **Applied Innovation:**\
+    The use of machine learning and natural language processing (NLP) techniques mirrors TWE’s growing interest in leveraging digital tools for product development and personalised marketing.
+
+-   **Global Relevance and Scalability:**\
+    While based on Portuguese wine data, the findings and modelling framework are transferable to TWE’s diverse international operations.
+
+This project demonstrates how data analytics can be used to support both academic research and practical decision-making within the wine industry.
+
+------------------------------------------------------------------------
+
+## Executive Summary
+
+This report investigates the key predictors of wine quality using two complementary datasets:
+
+1.  **UCI Wine Quality Dataset** – containing physicochemical attributes and quality ratings for red and white Vinho Verde wines from Portugal.\
+2.  **WineMag (Kaggle) Reviews** – featuring over 5,000 expert wine reviews from Portugal, including textual descriptions, prices, and point-based ratings (reviewed scores).
+
+### Key Analytical Outcomes
+
+-   **Predictive Modelling of Wine Quality:**\
+    Regression-based and tree-based machine learning models (including random forest and ordinal forest) were developed to assess which chemical attributes most strongly predict expert quality ratings.
+
+-   **Natural Language Processing (NLP) on Wine Descriptions:**\
+    A text mining approach was used to analyse wine reviews, with high-scoring wines (90+ points) revealing distinct descriptive patterns. Techniques included word clouds, and logistic regression for term importance.
+
+-   **Statistical Exploration:**\
+    The report includes hypothesis testing, t-tests, and confidence intervals to compare red and white wines, as well as analyses of pricing distributions and reviewed score variability.
+
+-   **Interactive Visualisation (Shiny App):**\
+    A web-based dashboard was developed to allow users to explore and predict wine quality interactively using model inputs and review filters.
+
+------------------------------------------------------------------------
+
+## Data Summary
+
+### Dataset 1: UCI Wine Quality (Vinho Verde)
+
+-   **Observations:** 6,497 (Red: 1,599 \| White: 4,898)\
+-   **Variables:** 11 numeric predictors (e.g. alcohol, sulphates, density) + expert-rated quality score\
+-   **Source:** UCI Machine Learning Repository
+
+### Dataset 2: WineMag (Kaggle) Portuguese Wine Reviews
+
+-   **Observations:** 5,322\
+-   **Variables:** Country, variety, wine colour, review score, price, critic review (text)\
+-   **Source:** Kaggle (Zynicide / Wine Reviews)
+
+Both datasets were pre-processed to address missing data, remove outliers (based on price percentiles), and harmonise features across data types. Additional transformations (e.g., log(price)) and categorical encodings were implemented to support modelling and visualisation.
+
+## Limitations
+
+A key limitation of this project is the inability to directly link the two datasets — the UCI Wine Quality data and the WineMag critic reviews — at the individual wine level. Due to the absence of a shared unique identifier (such as a wine name, vineyard, or product code), it was not possible to match specific wines across the datasets to connect their physicochemical properties, expert quality scores, critic reviews, and pricing information. As a result, the analysis focuses on broader trends and comparisons between red and white wines, rather than wine-specific modelling. While both datasets offer valuable insights independently, a more granular, linked dataset would enable a deeper exploration of the relationships between chemical composition, price, and perceived quality.
+
+------------------------------------------------------------------------
+
 ```{r setup, include=FALSE}
 # ----------------------------------------------------------
 # Setup: Environment Configuration
@@ -36,8 +113,6 @@ library(tidyverse)       # Core data manipulation and visualisation tools
 library(corrplot)        # Visualizing correlation matrices
 library(randomForest)    # Traditional Random Forest modeling
 library(broom)           # Tidying model outputs into tibbles
-#library(shiny)           # Building interactive web applications
-#library(bslib)           # Theming and layout tools for Shiny apps
 library(tm)              # Text mining framework (cleaning and tokenising)
 library(wordcloud)       # Generating word cloud visualizations
 library(RColorBrewer)    # Color palettes for better plot aesthetics
@@ -57,6 +132,7 @@ set.seed(123)  # This initial seed is sufficient for reproducibility
 ```
 
 ```{r}
+#| label: Quality Wine Load
 
 # ----------------------------------------------------------
 # Load and Combine UCI Wine Quality Datasets
@@ -73,10 +149,12 @@ wine_white$wine_colour <- "White"
 vinho_verde_data <- bind_rows(wine_red, wine_white) %>%
   rename_with(~ gsub(" ", "_", .))
 
-str(vinho_verde_data)
+
 ```
 
 ```{r}
+#| eval: false
+#| include: false
 # ----------------------------------------------------------
 # Data Dictionary: vinho_verde_data
 # ----------------------------------------------------------
@@ -148,10 +226,12 @@ wine_reviews_portugal_clean <- wine_reviews %>%
   dplyr::select(country, variety, wine_colour, score, price_USD, description) %>%
   filter(!is.na(score), !is.na(price_USD))
 
-glimpse(wine_reviews_portugal_clean)
+
 ```
 
 ```{r}
+#| eval: false
+#| include: false
 # ----------------------------------------------------------
 # Data Dictionary: wine_reviews_portugal_clean
 # ----------------------------------------------------------
@@ -167,7 +247,6 @@ tribble(
   knitr::kable(caption = "Table: Data Dictionary for wine_reviews_portugal_clean")
 ```
 
-
 ```{r}
 # ----------------------------------------------------------
 # Correlation between Price(USD) and Review Score (Raw and Log)
@@ -182,11 +261,11 @@ wine_reviews_portugal_clean$log_price <- log(wine_reviews_portugal_clean$price_U
 
 # Calculate Pearson correlation coefficient between raw price and score
 corr_coef_raw <- cor(wine_reviews_portugal_clean$price_USD, wine_reviews_portugal_clean$score, use = "complete.obs")
-cat("Correlation coefficient between price_USD and score:", round(corr_coef_raw, 3), "\n")
+#cat("Correlation coefficient between price_USD and score:", round(corr_coef_raw, 3), "\n")
 
 # Perform hypothesis test for correlation between raw price and score
 corr_test_raw <- cor.test(wine_reviews_portugal_clean$price_USD, wine_reviews_portugal_clean$score)
-print(corr_test_raw)
+#print(corr_test_raw)
 
 # ----------------------------------------------------------
 # Log-Transformed Price Correlation with Score
@@ -194,14 +273,16 @@ print(corr_test_raw)
 
 # Calculate Pearson correlation coefficient between log(price) and score
 corr_coef_log <- cor(wine_reviews_portugal_clean$log_price, wine_reviews_portugal_clean$score, use = "complete.obs")
-cat("Correlation coefficient between log(price_USD) and score:", round(corr_coef_log, 3), "\n")
+#cat("Correlation coefficient between log(price_USD) and score:", round(corr_coef_log, 3), "\n")
 
 # Perform hypothesis test for correlation between log-transformed price and score
 corr_test_log <- cor.test(wine_reviews_portugal_clean$log_price, wine_reviews_portugal_clean$score)
-print(corr_test_log)
+#print(corr_test_log)
 ```
 
 ```{r}
+#| eval: false
+#| include: false
 # ----------------------------------------------------------
 # Scatter Plot of Price (USD) vs Score with Linear Regression Line
 # ----------------------------------------------------------
@@ -221,6 +302,8 @@ ggplot(wine_reviews_portugal_clean, aes(x = score, y = price_USD)) +
 ```
 
 ```{r}
+#| eval: false
+#| include: false
 # ----------------------------------------------------------
 # Scatter Plot of Log(Price USD) vs Score with Regression Line
 # ----------------------------------------------------------
@@ -237,6 +320,119 @@ ggplot(wine_reviews_portugal_clean, aes(x = score, y = log(price_USD))) +
     caption = "Figure: Relationship between wine review scores and log-transformed prices.\nNote: Log scale reduces skew and highlights proportional differences."
   )
 ```
+
+```{r}
+# ----------------------------------------------------------
+# Define Function to Generate Word Cloud from Wine Descriptions
+# ----------------------------------------------------------
+
+create_wordcloud <- function(text_data, caption = NULL, scale_range = c(3, 0.5), caption_size = 1.2) {
+  layout(matrix(1:2, ncol = 1), heights = c(0.2, 0.8))  # Caption (20%) + Wordcloud (80%)
+  
+  # --- Row 1: Caption ---
+  par(mar = rep(0, 4))
+  plot.new()
+  if (!is.null(caption)) {
+    text(x = 0.5, y = 0.5, labels = caption, cex = caption_size, font = 2)
+  }
+  
+  # --- Row 2: Word Cloud ---
+  par(mar = c(0, 0, 0, 0))
+  
+  # Clean and process the text data
+  corpus <- Corpus(VectorSource(text_data))
+  corpus <- tm_map(corpus, content_transformer(tolower))
+  corpus <- tm_map(corpus, removePunctuation)
+  corpus <- tm_map(corpus, removeNumbers)
+  corpus <- tm_map(corpus, removeWords, c(stopwords("english"), "wine"))
+  
+  # Compute word frequencies
+  tdm <- TermDocumentMatrix(corpus)
+  m <- as.matrix(tdm)
+  word_freq <- sort(rowSums(m), decreasing = TRUE)
+  word_df <- data.frame(word = names(word_freq), freq = word_freq)
+  
+  # Generate the word cloud
+  wordcloud(
+    words = word_df$word, freq = word_df$freq, min.freq = 5,
+    max.words = 200, random.order = FALSE, rot.per = 0.35,
+    scale = scale_range, colors = brewer.pal(8, "Dark2")
+  )
+  
+  # Reset layout
+  layout(1)
+}
+```
+
+------------------------------------------------------------------------
+
+## Inital Analysis of Wine Reviews and Quality 
+
+###  Language of High-Scoring Wine Reviews
+
+The word cloud below was generated from critic reviews of Portuguese wines that received a score above 90 points. This visualisation highlights the most frequently used descriptive terms, with more commonly occurring words displayed in larger font sizes and positioned closer to the centre of the cloud. The representation accounts for repeated word usage across different reviews, providing a sense of overall emphasis in the language used to describe high-quality wines.
+
+
+
+```{r}
+# ----------------------------------------------------------
+# Generate Word Cloud for Red Wines with Score > 90
+# ----------------------------------------------------------
+
+red_descriptions <- wine_reviews_portugal_clean %>%
+  filter(wine_colour == "Red", score > 90) %>%
+  pull(description)
+
+#create_wordcloud(red_descriptions, caption = "Red Wines (Score > 90)", scale_range = c(3, 0.5))
+
+# ----------------------------------------------------------
+# Generate Word Cloud for White Wines with Score > 90
+# ----------------------------------------------------------
+
+white_descriptions <- wine_reviews_portugal_clean %>%
+  filter(wine_colour == "White", score > 90) %>%
+  pull(description)
+
+#create_wordcloud(white_descriptions, caption = "White Wines (Score > 90)", scale_range = c(3, 0.5))
+
+
+# ----------------------------------------------------------
+# Generate Combined Word Cloud for All Wines with Score > 90
+# ----------------------------------------------------------
+
+top_descriptions <- wine_reviews_portugal_clean %>%
+  filter(score > 90) %>%
+  pull(description)
+
+create_wordcloud(
+  top_descriptions,
+  caption = "Most Popular Words of Highly Scored Wines (Score > 90)",
+  scale_range = c(3, 0.5),
+  caption_size = 1  # Decrease font size 
+)
+
+```
+The prominence of terms like *tannin*, *fruit*, *flavours*, *acidity*, and *rich* in high-scoring wine reviews reflects their significance in defining wine quality and complexity. These descriptors are commonly used by wine critics to articulate the sensory experiences associated with premium wines (Jackson, 2020).
+
+- **Tannin**: Tannins contribute to the structure and aging potential of red wines. They are responsible for the drying sensation on the palate and add complexity to the wine's profile. High-quality red wines often exhibit well-integrated tannins that enhance their overall balance and longevity.
+
+- **Fruit**: Fruit descriptors indicate the presence of primary aromas and flavours derived from the grapes. The expression of fruit notes, such as berry, cherry, or citrus, signifies the wine's varietal character and ripeness, which are key indicators of quality.
+
+- **Flavours**: The term *flavours* encompasses the range of taste sensations perceived in wine, including fruit, spice, earth, and oak-derived notes. A complex flavour profile is often associated with higher-quality wines, as it reflects depth and nuance.
+
+- **Acidity**: Acidity provides freshness and balance to wine, influencing its liveliness and food-pairing versatility. Wines with well-balanced acidity are often perceived as more vibrant and are favored in quality assessments.
+
+- **Rich**: The descriptor *rich* denotes a wine's fullness and intensity of flavour. Richness is typically associated with concentration and depth, qualities that are esteemed in premium wines.
+
+These descriptors are integral to the language of wine evaluation, serving as benchmarks for assessing and communicating wine quality among professionals and enthusiasts alike.
+
+
+
+
+###  Relationship Between Log Price and Wine Score 
+
+The scatter plot (Figure 1) of log-transformed wine price against review score reveals a moderate-to-strong positive correlation of **0.64**, suggesting that, overall, higher-priced wines tend to receive higher critic ratings.
+
 
 ```{r}
 # ----------------------------------------------------------
@@ -281,7 +477,7 @@ ggplot(wine_reviews_portugal_clean, aes(x = score, y = log(price_USD))) +
     title = "Log(Price USD) vs. Wine Review Score by Colour",
     x = "Review Score",
     y = "Log(Price USD)",
-    caption =  "Figure: Regression analysis showing the relationship between critic review scores and the logarithm of wine prices."
+    caption =  "Figure 1: Regression analysis showing the relationship between critic review \n     scores and the logarithm of wine prices.\nNote: Log scale reduces skew and highlights proportional differences."
   ) +
 
   theme_minimal(base_size = 12) +  # reduce base text size
@@ -293,89 +489,29 @@ ggplot(wine_reviews_portugal_clean, aes(x = score, y = log(price_USD))) +
     legend.text = element_text(size = 10),
     legend.background = element_rect(fill = "transparent", colour = NA),
     legend.key = element_rect(fill = "transparent", colour = NA),
-    plot.caption = element_text(size = 10, hjust = 0)
+    plot.caption = element_text(size = 10, colour = "gray30", hjust = 0)
   )
 
 ```
 
+When segmented by wine colour, distinct patterns emerge:
 
-```{r}
-# ----------------------------------------------------------
-# Define Function to Generate Word Cloud from Wine Descriptions
-# ----------------------------------------------------------
-
-create_wordcloud <- function(text_data, caption = NULL, scale_range = c(3, 0.5)) {
-  # Set up layout: Row 1 for caption (20%), Row 2 for word cloud (80%)
-  layout(matrix(1:2, ncol = 1), heights = c(0.2, 0.8))
+- **Red wines** not only make up the majority of the dataset but also span a wider and higher price range. The steeper regression line observed for red wines indicates a stronger association between price and score—suggesting that expensive red wines are more likely to achieve higher ratings.
   
-  # --- Row 1: Caption ---
-  par(mar = rep(0, 4))
-  plot.new()
-  if (!is.null(caption)) {
-    text(x = 0.5, y = 0.5, labels = caption, cex = 2)
-  }
-  
-  # --- Row 2: Word Cloud ---
-  par(mar = c(0, 0, 0, 0))
-  
-  # Clean and process the text data
-  corpus <- Corpus(VectorSource(text_data))
-  corpus <- tm_map(corpus, content_transformer(tolower))
-  corpus <- tm_map(corpus, removePunctuation)
-  corpus <- tm_map(corpus, removeNumbers)
-  corpus <- tm_map(corpus, removeWords, c(stopwords("english"), "wine"))
-  
-  # Compute word frequencies
-  tdm <- TermDocumentMatrix(corpus)
-  m <- as.matrix(tdm)
-  word_freq <- sort(rowSums(m), decreasing = TRUE)
-  word_df <- data.frame(word = names(word_freq), freq = word_freq)
-  
-  # Generate the word cloud
-  wordcloud(
-    words = word_df$word, freq = word_df$freq, min.freq = 3,
-    max.words = 200, random.order = FALSE, rot.per = 0.35,
-    scale = scale_range, colors = brewer.pal(8, "Dark2")
-  )
-  
-  # Reset layout
-  layout(1)
-}
-```
+- **White wines**, on the other hand, are generally less expensive and receive slightly lower scores on average. The relationship between price and score is weaker among white wines, with fewer examples of high-priced or top-scoring bottles.
 
-```{r}
-# ----------------------------------------------------------
-# Generate Word Cloud for Red Wines with Score > 90
-# ----------------------------------------------------------
+The **median prices** in USD further reflect this distinction, with red wines priced at **$19** and white wines at **$13**. These differences suggest potential consumer expectations and market dynamics that favour premiumisation within the red wine category.
 
-red_descriptions <- wine_reviews_portugal_clean %>%
-  filter(wine_colour == "Red", score > 90) %>%
-  pull(description)
+Several factors contribute to red wines typically commanding higher prices compared to white wines:
 
-create_wordcloud(red_descriptions, caption = "Red Wines (Score > 90)", scale_range = c(3, 0.5))
+- **Production Techniques**: Red wines often undergo more complex production processes, including extended maceration and aging in oak barrels, which add to the cost. Oak barrels are expensive and need to be replaced periodically, and the aging process ties up capital as the wine cannot be sold until it has matured. In contrast, white wines are typically fermented without skins and often aged in stainless steel tanks, which are less costly and allow for quicker turnaround from production to sale (Roy, 2024).
 
-# ----------------------------------------------------------
-# Generate Word Cloud for White Wines with Score > 90
-# ----------------------------------------------------------
+- **Grape Varieties and Cultivation**: The grape varieties used for red wines, such as Cabernet Sauvignon and Pinot Noir, are often more sensitive to climate and soil conditions, making them more expensive to cultivate. Additionally, high-quality red wine grapes are frequently handpicked to ensure only the best grapes are used, increasing labour costs. White wine grapes, like Chardonnay and Sauvignon Blanc, generally have higher yields and can be machine-harvested, reducing production costs (Roy, 2024).
 
-white_descriptions <- wine_reviews_portugal_clean %>%
-  filter(wine_colour == "White", score > 90) %>%
-  pull(description)
+- **Market Demand and Perception**: There is a historical perception that red wines are more complex and better suited for aging, which can lead to a willingness among consumers to pay higher prices. This perception, along with higher demand for premium red wines, influences their market price (Roy, 2024).
 
-create_wordcloud(white_descriptions, caption = "White Wines (Score > 90)", scale_range = c(3, 0.5))
+These factors collectively contribute to the generally higher cost of red wines compared to white wines.
 
-
-# ----------------------------------------------------------
-# Generate Combined Word Cloud for All Wines with Score > 90
-# ----------------------------------------------------------
-
-top_descriptions <- wine_reviews_portugal_clean %>%
-  filter(score > 90) %>%
-  pull(description)
-
-create_wordcloud(top_descriptions, caption = "Most Popular Words of Highly Scored Wines (Score > 90)", scale_range = c(3, 0.5))
-
-```
 
 ```{r}
 # ----------------------------------------------------------
@@ -388,191 +524,12 @@ summary_stats <- wine_reviews_portugal_clean %>%
     count = n(),
     mean_score = mean(score, na.rm = TRUE),
     sd_score = sd(score, na.rm = TRUE),
-    mean_price_USD = mean(price_USD, na.rm = TRUE),
-    sd_price_USD = sd(price_USD, na.rm = TRUE)
-  )
-
-# Print the summary statistics
-print(summary_stats)
-```
-
-```{r}
-# ----------------------------------------------------------
-# Summary Statistics by Wine Colour
-# ----------------------------------------------------------
-
-summary_stats <- wine_reviews_portugal_clean %>%
-  group_by(wine_colour) %>%
-  summarise(
-    count = n(),
-    mean_score = mean(score, na.rm = TRUE),
-    sd_score = sd(score, na.rm = TRUE),
-    mean_price_USD = mean(price_USD, na.rm = TRUE),
-    sd_price_USD = sd(price_USD, na.rm = TRUE)
-  )
-```
-
-```{r}
-# ----------------------------------------------------------
-# Summary Statistics by Wine Colour
-# ----------------------------------------------------------
-
-summary_stats <- wine_reviews_portugal_clean %>%
-  group_by(wine_colour) %>%
-  summarise(
-    count = n(),
-    mean_score = mean(score, na.rm = TRUE),
-    sd_score = sd(score, na.rm = TRUE),
-    mean_price_USD = mean(price_USD, na.rm = TRUE),
-    sd_price_USD = sd(price_USD, na.rm = TRUE)
-  )
-
-# Print the summary statistics
-print(summary_stats)
-```
-
-```{r}
-# ----------------------------------------------------------
-# Distribution of Wine Review Scores by Wine Colour
-# ----------------------------------------------------------
-
-# Bin the review scores and count frequency by wine_colour
-ggplot(wine_reviews_portugal_clean, aes(x = factor(score), fill = wine_colour)) +
-  geom_bar(position = "dodge") +  # Side-by-side bars for Red and White
-  labs(
-    title = "Wine Review Scores Distribution by Wine Colour",       # Plot title
-    x = "Review Score",                                              # X-axis label
-    y = "Number of Wines",                                           # Y-axis label
-    fill = "Wine Colour",                                            # Legend title
-    caption = "Figure: Distribution of critic review scores across red and white Portuguese wines."  # Caption
-  ) +
-  scale_fill_manual(values = c("Red" = "darkred", "White" = "goldenrod")) +  # Custom fill colours
-  theme_minimal(base_size = 14) +  # Minimal clean theme with readable font size
-  theme(
-    plot.title = element_text(hjust = 0.5, face = "bold"),  # Centre and bold title
-    axis.text = element_text(color = "black"),              # Black axis labels
-    axis.title = element_text(color = "black"),             # Black axis titles
-    legend.title = element_text(face = "bold"),             # Bold legend title
-    plot.caption = element_text(size = 10, colour = "gray30", hjust = 0)  # Styled caption
-  )
-```
-
-
-```{r}
-# ----------------------------------------------------------
-# Robust Summary Statistics (Median & IQR) by Wine Colour
-# ----------------------------------------------------------
-
-robust_summary_stats <- wine_reviews_portugal_clean %>%
-  group_by(wine_colour) %>%
-  summarise(
-    count = n(),
-    median_score = median(score, na.rm = TRUE),
     IQR_score = IQR(score, na.rm = TRUE),
-    median_price_USD = median(price_USD, na.rm = TRUE),
+    mean_price_USD = mean(price_USD, na.rm = TRUE),
+    sd_price_USD = sd(price_USD, na.rm = TRUE),
     IQR_price_USD = IQR(price_USD, na.rm = TRUE)
   )
 
-# Print the robust summary statistics
-print(robust_summary_stats)
-
-```
-
-```{r}
-# ----------------------------------------------------------
-# Filter Out Price Outliers (Above 95th Percentile) by Wine Colour
-# ----------------------------------------------------------
-
-wine_reviews_portugal_filtered <- wine_reviews_portugal_clean %>%
-  group_by(wine_colour) %>%
-  filter(price_USD <= quantile(price_USD, 0.95, na.rm = TRUE)) %>%
-  ungroup()
-
-# ----------------------------------------------------------
-# Define Custom Colors for Wine Colour
-# ----------------------------------------------------------
-
-my_colors <- c("Red" = "darkred", "White" = "goldenrod")
-
-# ----------------------------------------------------------
-# Violin Plot: Distribution of Wine Scores by Colour
-# ----------------------------------------------------------
-
-p1 <- ggplot(wine_reviews_portugal_filtered, aes(x = wine_colour, y = score, fill = wine_colour)) +
-  geom_violin(trim = FALSE) +
-  geom_boxplot(width = 0.1, fill = "white", outlier.shape = NA) +
-  labs(
-    title = "Distribution of Wine Scores",
-    x = "Wine Colour",
-    y = "Score"
-  ) +
-  theme_minimal() +
-  scale_fill_manual(values = my_colors) +
-  theme(legend.position = "none")
-
-```
-
-
-```{r}
-# ----------------------------------------------------------
-# Violin Plot: Distribution of Wine Prices by Colour
-# ----------------------------------------------------------
-
-p2 <- ggplot(wine_reviews_portugal_filtered, aes(x = wine_colour, y = price_USD, fill = wine_colour)) +
-  geom_violin(trim = FALSE) +
-  geom_boxplot(width = 0.1, fill = "white", outlier.shape = NA) +
-  labs(
-    title = "Distribution of Wine Prices (USD)",
-    x = "Wine Colour",
-    y = "Price (USD)"
-  ) +
-  theme_minimal() +
-  scale_fill_manual(values = my_colors) +
-  theme(legend.position = "none")
-```
-
-
-```{r}
-# ----------------------------------------------------------
-# Violin Plot: Distribution of Log(Price USD) by Wine Colour
-# ----------------------------------------------------------
-
-p3 <- ggplot(wine_reviews_portugal_filtered, aes(x = wine_colour, y = log(price_USD), fill = wine_colour)) +
-  geom_violin(trim = FALSE) +
-  geom_boxplot(width = 0.1, fill = "white", outlier.shape = NA) +
-  labs(
-    title = "Distribution of Log(Price USD)",
-    x = "Wine Colour",
-    y = "Log(Price USD)"
-  ) +
-  theme_minimal() +
-  scale_fill_manual(values = my_colors) +
-  theme(legend.position = "none")
-```
-
-
-```{r}
-# ----------------------------------------------------------
-# Arrange the Two Plots Side by Side
-# ----------------------------------------------------------
-
-grid.arrange(p1, p2, ncol = 2)
-
-```
-
-
-
-
-
-```{r}
-# ----------------------------------------------------------
-# Summary of Vinho Verde Data
-# ----------------------------------------------------------
-dim(vinho_verde_data)
-head(vinho_verde_data, 3)
-table(vinho_verde_data$wine_colour)
-summary(vinho_verde_data$quality)
-glimpse(vinho_verde_data)
 ```
 
 ```{r}
@@ -589,20 +546,64 @@ vinho_verde_data$quality_factor <- factor(as.character(vinho_verde_data$quality)
 vinho_verde_data$wine_colour <- factor(vinho_verde_data$wine_colour, levels = c("Red", "White"))
 ```
 
+
+### Distribution of Wine Scores by Wine Colour
+
+The following section examines the distribution of both **critic review scores** and **objective quality ratings** across red and white wines in the Portuguese wine datasets.
+
+In the **WineMag review dataset**, a significantly greater number of **red wines (n = 3,111)** were reviewed compared to **white wines (n = 1,065)**. This disparity may reflect a broader market presence of red wines or a greater interest from critics in reviewing red varietals.
+
+In terms of scoring, red wines show a **higher median review score of 89**, whereas white wines have a **median score of 87**. This suggests that, on average, red wines may be perceived more favourably by critics within this dataset.
+
+In the **UCI Vinho Verde quality dataset**, the sample distribution is reversed: there are **more white wines (n = 4,898)** than red wines (**n = 1,599**). This difference could be attributed to the production focus within the Vinho Verde region, where white wines are more commonly produced and studied.
+
+When examining the distribution of **quality ratings** (objective assessments based on physicochemical properties), the majority of wines, regardless of colour, receive scores between **5 and 7**, with very few wines rated at the extremes of the scale (i.e., scores of 3 or 9). This central clustering suggests a relatively narrow evaluation range for physicochemical-based quality, compared to the broader and potentially more subjective distribution seen in critic reviews.
+
+These patterns are visually summarised in the two distribution plots below:
+
+-  **Figure 2** presents the distribution of *review scores* (subjective ratings from critics).
+
+-  **Figure 3** visualises the *quality ratings* (objective chemical assessments) from the UCI dataset.
+
+Both use side-by-side bars to clearly compare the frequency of scores between red and white wines.
+
 ```{r}
+# ----------------------------------------------------------
+# Distribution of Wine Review Scores by Wine Colour
+# ----------------------------------------------------------
+
+# Bin the review scores and count frequency by wine_colour
+ggplot(wine_reviews_portugal_clean, aes(x = factor(score), fill = wine_colour)) +
+  geom_bar(position = "dodge") +  # Side-by-side bars for Red and White
+  labs(
+    title = "Wine Review Scores Distribution by Wine Colour",       # Plot title
+    x = "Review Score",                                              # X-axis label
+    y = "Number of Wines",                                           # Y-axis label
+    fill = "Wine Colour",                                            # Legend title
+    caption = "Figure 2: Distribution of critic review scores across red and white Portuguese wines."  # Caption
+  ) +
+  scale_fill_manual(values = c("Red" = "darkred", "White" = "goldenrod")) +  # Custom fill colours
+  theme_minimal(base_size = 14) +  # Minimal clean theme with readable font size
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),  # Centre and bold title
+    axis.text = element_text(color = "black"),              # Black axis labels
+    axis.title = element_text(color = "black"),             # Black axis titles
+    legend.title = element_text(face = "bold"),             # Bold legend title
+    plot.caption = element_text(size = 10, colour = "gray30", hjust = 0)  # Styled caption
+  )
 
 # ----------------------------------------------------------
 # Distribution of Wine Quality Ratings by Wine Colour
 # ----------------------------------------------------------
 
-ggplot(vinho_verde_data, aes(x = quality_factor, fill = wine_colour)) +
+ ggplot(vinho_verde_data, aes(x = quality_factor, fill = wine_colour)) +
   geom_bar(position = "dodge") +  # Side-by-side bars for each wine colour
   labs(
     title = "Wine Quality Ratings Distribution by Wine Colour",        # Plot title
     x = "Quality Rating",                                              # X-axis label
     y = "Number of Wines",                                             # Y-axis label
     fill = "Wine Colour",                                              # Legend title
-    caption = "Figure: Distribution of wine quality scores by wine colour (Vinho Verde dataset)."  # Caption
+    caption = "Figure 3: Distribution of wine quality scores by wine colour (Vinho Verde dataset)."  # Caption
   ) +
   scale_fill_manual(values = c("Red" = "darkred", "White" = "goldenrod")) +  # Custom colours
   theme_minimal(base_size = 14) +  # Clean theme with readable font size
@@ -613,7 +614,125 @@ ggplot(vinho_verde_data, aes(x = quality_factor, fill = wine_colour)) +
     legend.title = element_text(face = "bold"),             # Bold legend
     plot.caption = element_text(size = 10, colour = "gray30", hjust = 0)  # Styled caption
   )
+
+
 ```
+
+### Comparison of Standardised Quality and Review Scores by Wine Colour
+
+To better understand how objective wine quality scores compare with subjective critic reviews, both datasets were standardised using z-scores and visualised using smoothed density plots, separated by wine colour. This approach allows for a direct comparison between the UCI wine quality ratings and the Portuguese wine review scores on a consistent scale.
+
+The following density plots (Figure 4) compare **standardised scores (z-scores)** from the UCI Vinho Verde quality data and the Portuguese wine review scores, separated by wine colour. By converting both scoring systems to a standard scale, we can directly compare their distributions regardless of differing rating methods or value ranges.
+
+From the plots, a few key insights emerge:
+
+- For **red wines**, the distribution of **review scores** is shifted to the right relative to the **quality scores**, indicating that red wines tend to receive higher critic review scores than their UCI-assessed quality ratings. This may reflect a bias in consumer-facing reviews toward red wines or a preference for characteristics more common in reds.
+
+- For **white wines**, the pattern is reversed. The **quality scores** from the UCI dataset appear higher, on average, than the **review scores** from the critic reviews. This suggests that, while white wines may perform better on objective quality criteria (such as chemical properties), they are rated slightly lower in subjective critic reviews.
+
+These differences may also stem from **dataset imbalance**. The **wine review dataset contains more red wines**, while the **quality dataset includes more white wines**, potentially influencing the score distributions. Additionally, the broader market exposure and pricing diversity of red wines may contribute to their higher critic scoring trends.
+
+Overall, this standardised comparison highlights the importance of evaluating both **objective quality** and **subjective perception** in understanding wine excellence across different varieties.
+
+```{r}
+# ----------------------------------------------------------
+# Smoothed Density Plot: Scaled Quality vs Review Score by Wine Colour
+# ----------------------------------------------------------
+
+# Create standardised scores (z-scores) for both datasets and combine into one dataframe
+scaled_data <- bind_rows(
+  # Standardise the UCI Vinho Verde wine quality scores
+  vinho_verde_data %>%
+    transmute(
+      Colour = wine_colour,
+      Score_z = scale(quality_num)[,1],  # z-score for wine quality
+      Source = "Quality"
+    ),
+  # Standardise the wine review scores from the Portuguese reviews dataset
+  wine_reviews_portugal_clean %>%
+    transmute(
+      Colour = wine_colour,
+      Score_z = scale(score)[,1],  # z-score for review score
+      Source = "Review Score"
+    )
+) %>%
+  filter(Colour %in% c("Red", "White"))  # Only include Red and White wines
+
+# Generate a palette with visually distinct colours
+colors <- createPalette(10, c("#0D58FF", "#4B7A00"))
+
+# Display the colours and swatches (for previewing)
+#list(colors)
+#swatch(colors)
+
+# Assign names to the colour vector for use in scale_fill_manual
+names(colors) <- unique(scaled_data$Source)
+
+# Create density plots of standardised scores, grouped by data source and faceted by wine colour
+ggplot(scaled_data, aes(x = Score_z, fill = Source)) +
+  geom_density(alpha = 0.6, bw = 0.4, color = NA) +  # Smoothed density curves with transparency
+  facet_wrap(~ Colour, scales = "free") +  # Separate plots for Red and White wine
+  labs(
+    title = "Standardized Distributions of Quality and Review Score by Wine Colour",
+    x = "Standardized Score (Z)",
+    y = "Density",
+    fill = "Source",
+    caption = "Figure 4: Smoothed density curves comparing UCI quality scores and review scores by wine colour."
+  ) +
+  scale_fill_manual(values = colors) +  # Apply custom colour scheme
+  theme_minimal() +
+  theme(
+    legend.position = "top",
+    plot.title.position = "plot",
+    plot.margin = grid::unit(c(20, 10, 10, 10), "pt"),  # Add spacing around the plot
+    plot.caption = element_text(size = 10, colour = "gray30", hjust = 0)
+  )
+```
+
+
+
+```{r}
+# ----------------------------------------------------------
+# Filter Out Price Outliers (Above 95th Percentile) by Wine Colour
+# ----------------------------------------------------------
+
+wine_reviews_portugal_filtered <- wine_reviews_portugal_clean %>%
+  group_by(wine_colour) %>%
+  filter(price_USD <= quantile(price_USD, 0.95, na.rm = TRUE)) %>%
+  ungroup()
+```
+
+
+------------------------------------------------------------------------
+
+## Predictive Modelling of Wine Quality
+
+Building on the exploratory analyses of wine characteristics and review patterns, the next section focuses on **predictive modelling** to identify the key variables that influence wine quality. Using the UCI Wine Quality dataset as the foundation, several statistical and machine learning techniques were applied to model the relationship between physicochemical properties and expert assigned quality scores.
+
+This modelling process not only highlights the most influential predictors of wine quality but also allows for the evaluation of different modelling approaches, including linear regression, random forest, and ordinal forest models. Through this, we aim to determine which attributes most strongly contribute to a wine’s perceived quality and assess the overall predictive performance of each model.
+
+
+### Correlation Matrix of Physicochemical Features
+
+The correlation matrix below presents the pairwise relationships between all numeric variables in the Vinho Verde wine dataset, including the expert-assigned **quality score**. The matrix serves as an important exploratory tool to identify potential linear associations between the wine's **physicochemical properties**—such as alcohol, acidity, sulphates, and pH—and its rated quality.
+
+Each cell in the matrix displays the **Pearson correlation coefficient** between two variables, which ranges from -1 to +1:
+
+- A **positive value** indicates a direct relationship (as one variable increases, so does the other).
+
+- A **negative value** indicates an inverse relationship (as one increases, the other decreases).
+
+- A value near **0** implies little or no linear relationship.
+
+The colours in the matrix represent the strength and direction of the correlations:
+
+- **Dark blue** indicates strong positive correlations.
+
+- **Dark red** indicates strong negative correlations.
+
+- **Lighter shades** (closer to white) indicate weak or no correlation.
+
+This matrix provides early insights into which variables may be important predictors of wine quality and informs feature selection in the modelling phase. For instance, if alcohol shows a strong positive correlation with quality, it may be expected to have a significant role in predictive modelling.
 
 ```{r}
 # ----------------------------------------------------------
@@ -642,11 +761,14 @@ corrplot(
 )
 
 # Add a centred heading at the top
-mtext("Correlation Matrix of Wine Data", outer = TRUE, cex = 1.5, col = "black", side = 3, line = 1, adj = 0.5)
+mtext("Figure 5 - Correlation Matrix of Wine Data", outer = TRUE, cex = 1.5, col = "black", side = 3, line = 1, adj = 0.5)
 
 # Restore original graphics settings
 par(old_par)
 ```
+
+
+
 
 ```{r}
 # ----------------------------------------------------------
@@ -687,13 +809,15 @@ preds <- predict(of_model, newdata = as.data.frame(vinho_verde_test_numeric))[[1
 preds_recoded <- factor(quality_levels[as.numeric(preds)], ordered = TRUE, levels = quality_levels)
 ```
 
+
+
 ```{r}
 # ----------------------------------------------------------
 # Model Evaluation
 # ----------------------------------------------------------
 # Create a confusion matrix to evaluate classification accuracy
 conf_matrix <- table(Predicted = preds_recoded, Actual = vinho_verde_test_numeric$quality)
-conf_matrix
+
 
 # Calculate overall prediction accuracy
 accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
@@ -709,11 +833,48 @@ rmse <- sqrt(mean((predicted_numeric - actual_numeric)^2))
 # Calculate Mean Absolute Error
 mae <- mean(abs(predicted_numeric - actual_numeric))
 
-cat("Accuracy:", accuracy, "\n")
-print(kappa)
-cat("RMSE:", rmse, "\n")
-cat("MAE:", mae, "\n")
+#cat("Accuracy:", accuracy, "\n")
+#print(kappa)
+#cat("RMSE:", rmse, "\n")
+#cat("MAE:", mae, "\n")
+
 ```
+### Modelling Wine Quality Using Ordinal Forest
+
+To model and predict wine quality, the dataset was first divided into training and testing sets, with **80% of the data used for training** and **20% reserved for testing**. This split ensures that the model is trained on one subset of the data and then evaluated on unseen observations to assess its generalisability and predictive performance.
+
+#### Why Use the Ordinal Forest Method?
+
+Wine quality ratings are **ordinal** in nature—they follow a ranked scale (typically from 3 to 9), but the distances between the levels are not necessarily equal. Traditional regression or classification models might ignore this structure by treating the outcome either as continuous or nominal.
+
+The **Ordinal Forest** algorithm is specifically designed for ordered categorical outcomes. It combines the robustness of random forest modelling with the ability to respect the ordinal structure of the dependent variable. This makes it particularly well-suited for predicting wine quality ratings, which are discrete and ranked.
+
+#### Outcomes and Model Evaluation
+
+After fitting the ordinal forest model, predictions were made on the test set and evaluated using several performance metrics:
+
+- **Accuracy**: The model correctly predicted the exact quality rating in **`r round(accuracy * 100, 1)`%** of cases.
+- **Weighted Cohen’s Kappa**: A kappa value of **`r round(kappa$value, 3)`** indicates substantial agreement between predicted and actual ratings.
+- **RMSE (Root Mean Squared Error)**: **`r round(rmse, 3)`** – this reflects the average squared difference between predicted and true ratings.
+- **MAE (Mean Absolute Error)**: **`r round(mae, 3)`**, meaning predictions were on average within a third of a point from the actual score.
+
+The **confusion matrix** further illustrates that the model performs well across the central quality scores (5, 6, and 7), but is less confident predicting extreme values (e.g. 3, 9), which are rare in the dataset.
+
+```{r}
+cat("Figure 6 - Confusion Matrix", "\n\n")
+conf_matrix
+#cat("MAE:", mae, "\n")
+```
+
+
+
+
+#### Visualising Model Performance
+
+The grouped bar plot (Figure 7) below compares the distribution of **actual** vs **predicted** wine quality ratings. While the overall pattern is preserved, slight under- or over-estimation is observed at the mid-range scores, particularly between ratings of 5 and 7. The absence of predictions for rare classes like 3 and 9 reflects their underrepresentation in the training data, a common issue in ordinal modelling.
+
+This modelling approach demonstrates that physicochemical attributes can explain a meaningful portion of variance in wine quality ratings, and ordinal forest provides a strong foundation for accurate prediction in this domain.
+
 
 ```{r}
 # ----------------------------------------------------------
@@ -739,10 +900,37 @@ ggplot(combined, aes(x = WineQuality, y = n, fill = Source)) +
     title = "Actual vs Predicted Wine Quality",
     x = "Quality Rating",
     y = "Count",
-    caption = "Figure: Comparison of actual and predicted quality ratings."
+    caption = "Figure 7: Comparison of actual and predicted quality ratings."
   ) +
-  theme_minimal()
+  theme_minimal() +  # Clean theme with readable font size
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),  # Centred and bolded title
+    axis.text = element_text(color = "black"),              # Axis label colour
+    axis.title = element_text(color = "black"),             # Axis title colour
+    legend.title = element_text(face = "bold"),             # Bold legend
+    plot.caption = element_text(size = 10, colour = "gray30", hjust = 0)  # Styled caption
+  )
 ```
+
+
+### Variable Importance from the Ordinal Forest Model
+
+The plot (Figure 8) below ranks the predictor variables by their relative importance in the **ordinal forest model** used to predict wine quality. This measure of *importance* reflects the contribution each variable makes toward improving the model’s predictive accuracy. Variables that frequently contribute to effective splits in the decision trees receive higher scores.
+
+These **importance values** are scaled relative measures, helping us understand which physicochemical features have the strongest impact on model performance. A higher value indicates greater influence in predicting wine quality, but the values should be interpreted comparatively rather than absolutely.
+
+Several observations stand out:
+
+- **Alcohol** is by far the most influential predictor, consistent with our earlier **correlation matrix (Figure 5)**, where alcohol showed a **strong positive correlation** with quality (indicated by a dark blue colour). This suggests that higher alcohol levels are generally associated with higher-rated wines in this dataset.
+
+- **Density** also ranked highly in importance, but in contrast, it showed a **negative correlation** with quality (represented by a medium red shade in the correlation matrix). This implies that higher density may be associated with lower quality, yet it remains a useful variable in differentiating wine types.
+
+- Interestingly, alcohol and density were shown to be **strongly negatively correlated with each other** (deep red cell in the matrix), meaning as alcohol content increases, density tends to decrease. This inverse relationship helps explain why both variables can be important in the model—each provides distinct but complementary signals for predicting quality.
+The strong negative correlation observed between **alcohol** and **density** can be explained by their chemical relationship during the fermentation process. As sugar in the grape must is converted into ethanol, the **alcohol content increases**, while the **overall density of the wine decreases**. This is because ethanol has a lower density than water, and the fermentation process reduces the sugar content (which contributes to higher density) while increasing alcohol. As a result, wines with higher alcohol tend to be less dense. This inverse relationship is well established in enology and is routinely used as part of quality control and fermentation monitoring in winemaking (Jackson, 2020).
+
+- Other variables such as **volatile acidity**, **chlorides**, and **free sulfur dioxide** also contribute meaningfully to the model, while predictors like **fixed acidity**, **pH**, and **sulphates** appear to have less influence.
+
+By combining insights from both the correlation matrix and the ordinal forest model, we gain a more comprehensive understanding: **features that are both strongly correlated with quality and structurally useful in the tree-based model tend to emerge as top predictors**. Meanwhile, the model’s ability to capture interactions and non-linear effects ensures that variables like density still hold value even if their relationship with quality is inverse or complex.
 
 ```{r}
 # ----------------------------------------------------------
@@ -768,200 +956,61 @@ ggplot(varimp_df, aes(x = Predictor, y = Importance)) +
   labs(
     title = "Variable Importance (Ordinal Forest)",
     x = "", y = "Importance",
-    caption = "Figure: Importance of variables in predicting wine quality"
+    caption = "Figure 8: Importance of variables in predicting wine quality"
   ) +
-  theme_minimal()
-```
-
-```{r}
-# ----------------------------------------------------------
-# T-Test: Quality vs Review Score by Wine Colour
-# ----------------------------------------------------------
-
-# Combine both datasets into a single frame with aligned structure
-merged_quality_score <- bind_rows(
-  vinho_verde_data %>% transmute(Score = quality_num, Colour = wine_colour, Source = "Quality"),
-  wine_reviews_portugal_clean %>% transmute(Score = score, Colour = wine_colour, Source = "Review Score")
-) %>% 
-  filter(Colour %in% c("Red", "White"))
-
-# T-test for Red wines
-t_test_red <- t.test(
-  Score ~ Source,
-  data = merged_quality_score %>% filter(Colour == "Red")
-)
-
-# T-test for White wines
-t_test_white <- t.test(
-  Score ~ Source,
-  data = merged_quality_score %>% filter(Colour == "White")
-)
-
-# Output results
-cat("T-test Results for Red Wines:
-")
-print(t_test_red)
-cat("
-T-test Results for White Wines:
-")
-print(t_test_white)
-```
-
-```{r}
-# ----------------------------------------------------------
-# Smoothed Density Plot: Scaled Quality vs Review Score by Wine Colour
-# ----------------------------------------------------------
-
-# Create standardised scores (z-scores) for both datasets and combine into one dataframe
-scaled_data <- bind_rows(
-  # Standardise the UCI Vinho Verde wine quality scores
-  vinho_verde_data %>%
-    transmute(
-      Colour = wine_colour,
-      Score_z = scale(quality_num)[,1],  # z-score for wine quality
-      Source = "Quality"
-    ),
-  # Standardise the wine review scores from the Portuguese reviews dataset
-  wine_reviews_portugal_clean %>%
-    transmute(
-      Colour = wine_colour,
-      Score_z = scale(score)[,1],  # z-score for review score
-      Source = "Review Score"
-    )
-) %>%
-  filter(Colour %in% c("Red", "White"))  # Only include Red and White wines
-
-# Generate a palette with visually distinct colours
-colors <- createPalette(10, c("#0D58FF", "#4B7A00"))
-
-# Display the colours and swatches (for previewing)
-list(colors)
-swatch(colors)
-
-# Assign names to the colour vector for use in scale_fill_manual
-names(colors) <- unique(scaled_data$Source)
-
-# Create density plots of standardised scores, grouped by data source and faceted by wine colour
-ggplot(scaled_data, aes(x = Score_z, fill = Source)) +
-  geom_density(alpha = 0.6, bw = 0.4, color = NA) +  # Smoothed density curves with transparency
-  facet_wrap(~ Colour, scales = "free") +  # Separate plots for Red and White wine
-  labs(
-    title = "Standardized Distributions of Quality and Review Score by Wine Colour",
-    x = "Standardized Score (Z)",
-    y = "Density",
-    fill = "Source",
-    caption = "Figure: Smoothed density curves comparing UCI quality scores and review scores by wine colour."
-  ) +
-  scale_fill_manual(values = colors) +  # Apply custom colour scheme
-  theme_minimal() +
+  theme_minimal() +  # Clean theme with readable font size
   theme(
-    legend.position = "top",
-    plot.title.position = "plot",
-    plot.margin = grid::unit(c(20, 10, 10, 10), "pt")  # Add spacing around the plot
+    plot.title = element_text(hjust = 0.5, face = "bold"),  # Centred and bolded title
+    axis.text = element_text(color = "black"),              # Axis label colour
+    axis.title = element_text(color = "black"),             # Axis title colour
+    legend.title = element_text(face = "bold"),             # Bold legend
+    plot.caption = element_text(size = 10, colour = "gray30", hjust = 0)  # Styled caption
   )
 ```
+------------------------------------------------------------------------
 
-```{r}
-# ----------------------------------------------------------
-# T-Test: Score by Wine Colour in Wine Reviews
-# ----------------------------------------------------------
-# Perform t-test to compare review scores by wine colour
-t_test_reviews_colour <- t.test(score ~ wine_colour, data = wine_reviews_portugal_clean)
-t_test_reviews_colour
-```
+##  Summary
 
-```{r}
-# ----------------------------------------------------------
-# Boxplot: Review Score by Wine Colour
-# ----------------------------------------------------------
-# Create a boxplot to compare review scores for red and white wines
-ggplot(wine_reviews_portugal_clean, aes(x = wine_colour, y = score, fill = wine_colour)) +
-  geom_boxplot() +  # Use boxplots to show distribution of review scores
-  labs(
-    title = "Wine Review Scores by Colour",  # Plot title
-    x = "Wine Colour",                       # X-axis label
-    y = "Review Score",                      # Y-axis label
-    caption = "Figure: Boxplot of review scores for red vs white Portuguese wines"  # Figure caption
-  ) +
-  scale_fill_manual(values = c("Red" = "darkred", "White" = "goldenrod")) +  # Set custom colours
-  theme_minimal() +  # Clean minimal theme for publication-style plots
-  theme(legend.position = "none")  # Remove redundant legend (colour is already on x-axis)
-```
+This report presents a comprehensive analysis of Portuguese wines using two complementary datasets: the **UCI Wine Quality dataset**, which contains physicochemical properties and expert-rated quality scores, and the **WineMag (Kaggle) critic reviews dataset**, which includes scores, descriptions, and prices. Through a combination of exploratory data analysis, statistical testing, machine learning modelling, and natural language processing (NLP), the report investigates the factors that influence wine quality and perception.
 
-```{r}
-##############################################
-# Shiny App: Wine Quality Predictor using Ranger 
-# with Consistent Column Order in the Output Tabs
-#
-# Assumptions (global processing has been run):
-#  - vinho_verde_data is loaded and processed:
-#      • vinho_verde_data$quality is an ordered factor,
-#      • vinho_verde_data$wine_colour is a factor with levels c("Red", "White"),
-#      • column names use underscores (e.g., fixed_acidity).
-#  - train_set and test_set are created (80/20 split from vinho_verde_data).
-#  - feature_ranges is computed.
-#  - quality_num is created (numeric version of quality).
-#  - Minimal numeric train/test sets (train_set_numeric_df, test_set_numeric_df)
-#    have been created.
-##############################################
+### Key Findings
 
-# ----------------------------------------------------------
-# Compute Feature Ranges for UI Inputs
-# ----------------------------------------------------------
-feature_ranges <- vinho_verde_data %>%
-  summarise(
-    fixed_acidity_min    = min(fixed_acidity),
-    fixed_acidity_max    = max(fixed_acidity),
-    volatile_acidity_min = min(volatile_acidity),
-    volatile_acidity_max = max(volatile_acidity),
-    citric_acid_min      = min(citric_acid),
-    citric_acid_max      = max(citric_acid),
-    residual_sugar_min   = min(residual_sugar),
-    residual_sugar_max   = max(residual_sugar),
-    chlorides_min        = min(chlorides),
-    chlorides_max        = max(chlorides),
-    free_sulfur_dioxide_min   = min(free_sulfur_dioxide),
-    free_sulfur_dioxide_max   = max(free_sulfur_dioxide),
-    total_sulfur_dioxide_min  = min(total_sulfur_dioxide),
-    total_sulfur_dioxide_max  = max(total_sulfur_dioxide),
-    density_min          = min(density),
-    density_max          = max(density),
-    pH_min               = min(pH),
-    pH_max               = max(pH),
-    sulphates_min        = min(sulphates),
-    sulphates_max        = max(sulphates),
-    alcohol_min          = min(alcohol),
-    alcohol_max          = max(alcohol)
-  )
-print(feature_ranges)
+- **Review vs. Quality Scores**: Red wines received **higher median review scores (89)** compared to white wines (87), while in the UCI quality dataset, white wines were more prevalent and scored slightly lower on average. The majority of wines—both red and white—were rated between **5 and 7**, with very few wines receiving extreme scores (3 or 9), indicating a central tendency in objective quality assessment.
 
-# -------------------------------
-# Define Global Column Order for Outputs
-# -------------------------------
-desired_order_history <- c("Timestamp", "Alcohol", "Density", "Volatile Acidity", 
-                           "Chlorides", "Free Sulfur Dioxide", "Residual Sugar", 
-                           "Total Sulfur Dioxide", "Citric Acid", "Sulphates", 
-                           "Fixed Acidity", "pH", "Wine Colour", "Predicted Quality")
+- **Price and Score Relationship**: A moderate-to-strong positive correlation (**r = 0.64**) was found between **log-transformed wine price and review score**. Red wines showed a steeper relationship, suggesting that **higher-priced red wines tend to score better**, whereas white wines had lower prices and generally more modest scores.
 
-desired_order_filtered <- c("Alcohol", "Volatile Acidity", "Density",  
-                            "Chlorides", "Free Sulfur Dioxide", "Residual Sugar", 
-                            "Total Sulfur Dioxide", "Citric Acid", "Sulphates", 
-                            "Fixed Acidity", "pH", "Wine Colour", "Quality")
-```
+- **Standardised Comparison of Scores**: When standardising both quality scores and review scores, **red wines tended to score higher in critic reviews than in quality assessments**, while **white wines scored higher in quality assessments** than in critic reviews. This highlights potential differences in **subjective perception** versus **objective measurements** across wine types.
 
-```{r}
-# -------------------------------
-# Cache the Ranger Model Once at Startup
-# -------------------------------
-predictors_used <- c("fixed_acidity", "volatile_acidity", "citric_acid", "residual_sugar",
-                     "chlorides", "free_sulfur_dioxide", "total_sulfur_dioxide", "density",
-                     "pH", "sulphates", "alcohol", "Wine Colour")
-model_cache <- reactiveVal({
-  set.seed(123)
-  ranger(quality_num ~ fixed_acidity + volatile_acidity + citric_acid +
-           residual_sugar + chlorides + free_sulfur_dioxide +
-           total_sulfur_dioxide + density + pH + sulphates + alcohol + wine_colour,
-         data = vinho_verde_train_set, num.trees = 500, importance = "impurity")
-})
+- **NLP Analysis of Descriptions**: Word clouds and logistic regression applied to reviews scoring over 90 revealed that terms such as *tannin*, *fruit*, *flavours*, *acidity*, and *rich* were strongly associated with high-quality wines. These terms reflect common tasting descriptors that align with both chemical properties and consumer appeal (Jackson, 2020).
 
-```
+- **Correlation Insights**: The **correlation matrix** revealed a strong positive correlation between **alcohol and quality**, and a negative correlation between **density and quality**. Additionally, alcohol and density themselves were strongly **negatively correlated**, which is consistent with wine chemistry—alcohol lowers density during fermentation (Jackson, 2020).
+
+- **Predictive Modelling with Ordinal Forest**:
+  - An **ordinal forest model** was trained to predict wine quality using 80% of the data and evaluated on the remaining 20%.
+  - The model achieved an **accuracy of `r round(accuracy * 100, 1)`%**, a **Cohen’s weighted Kappa of `r round(kappa$value, 3)`**, **RMSE of `r round(rmse, 3)`**, and **MAE of `r round(mae, 3)`**, indicating strong agreement between predicted and actual quality levels.
+  - The **variable importance plot** showed that **alcohol** was by far the most influential predictor, followed by **density** and **volatile acidity**. This aligns with the correlation analysis and confirms the significance of these variables in driving wine quality.
+
+### Conclusion
+
+This project demonstrates how structured and unstructured data can be integrated to gain meaningful insights into wine quality. By combining statistical methods, machine learning, and natural language analysis, we identified key chemical and linguistic indicators of quality and developed a predictive model capable of estimating wine ratings with substantial accuracy.
+
+The findings are particularly relevant for industry stakeholders like **Treasury Wine Estates (TWE)**, who can benefit from the modelling framework to optimise production, marketing, and pricing strategies. The accompanying **interactive Shiny app** further enables users to explore and predict wine quality dynamically, making the results accessible and actionable for broader audiences.
+
+
+------------------------------------------------------------------------
+
+## References
+
+Dua, D., & Graff, C. (2017). *Wine Quality Data Set*. UCI Machine Learning Repository. University of California, Irvine, School of Information and Computer Sciences. Retrieved from <https://archive.ics.uci.edu/ml/datasets/wine+quality>
+
+Jackson, R. S. (2020). *Wine tasting: A professional handbook* (4th ed.). Academic Press.
+
+Jackson, R. S. (2020). *Wine science: Principles and applications* (5th ed.). Academic Press.
+
+Roy, U. (2024, May 22). *4 Reasons White Wines Are Usually Cheaper Than Red Wines*. Slurrp. https://www.slurrp.com/article/4-reasons-white-wines-are-usually-cheaper-than-red-wines-1716392774297
+
+Treasury Wine Estates. (2024). *Annual Report 2023: Premiumisation & Global Growth Strategy*. Retrieved from <https://www.tweglobal.com/investors/reports-presentations>
+
+Zynicide. (2017). *Wine Reviews*. Kaggle. Retrieved from <https://www.kaggle.com/datasets/zynicide/wine-reviews>
+
+*ChatGPT (OpenAI, 2025) was used throughout the project to assist with code formatting, improve the consistency of sentence structure and narrative flow, and support the refinement of analytical interpretations.*
