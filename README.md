@@ -31,7 +31,6 @@ Together, these datasets are used to explore the relationship between chemical a
 
 ------------------------------------------------------------------------
 
-## 📁 Folder Structure
 
 ## 📁 Folder Structure
 
