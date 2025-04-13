@@ -1,0 +1,967 @@
+---
+title: "Wine Quality Analysis: Identifying Key Quality Predictors"
+author: "James Tesoriero"
+subtitle: "University of Sydney ODAT5011 Project 2"
+date: "13 April 2025"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    toc-floating: true
+    code-fold: true         
+    number-sections: false
+    self-contained: true
+    theme: flatly
+    css: 
+      - https://use.fontawesome.com/releases/v5.0.6/css/all.css
+---
+
+```{r setup, include=FALSE}
+# ----------------------------------------------------------
+# Setup: Environment Configuration
+# ----------------------------------------------------------
+
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+rm(list = ls())
+gc()
+```
+
+```{r}
+# ----------------------------------------------------------
+# Load Required Libraries
+# ----------------------------------------------------------
+
+# Libraries for data manipulation, modeling, and visualization
+library(tidyverse)       # Core data manipulation and visualisation tools 
+library(corrplot)        # Visualizing correlation matrices
+library(randomForest)    # Traditional Random Forest modeling
+library(broom)           # Tidying model outputs into tibbles
+#library(shiny)           # Building interactive web applications
+#library(bslib)           # Theming and layout tools for Shiny apps
+library(tm)              # Text mining framework (cleaning and tokenising)
+library(wordcloud)       # Generating word cloud visualizations
+library(RColorBrewer)    # Color palettes for better plot aesthetics
+library(gridExtra)       # Arranging multiple ggplot objects in a grid
+library(ordinalForest)   # Ordinal random forest modeling for ordered outcomes
+library(MASS)            # Classic stats functions, including LDA and distributions
+library(irr)             # Inter-rater reliability metrics (e.g., Cohen’s Kappa)
+library(caret)           # Classification and Regression Training framework
+library(ggplot2)         # Grammar of graphics visualisation package 
+library(stringr)         # String manipulation utilities
+library(ranger)          # Fast implementation of Random Forests
+library(readr)           # Fast and tidy reading of CSV and text files
+library(Polychrome)      # Load Polychrome for generating visually distinct colour palettes
+
+# Set seed for reproducibility
+set.seed(123)  # This initial seed is sufficient for reproducibility
+```
+
+```{r}
+
+# ----------------------------------------------------------
+# Load and Combine UCI Wine Quality Datasets
+# ----------------------------------------------------------
+
+
+wine_red <- read_delim("../data/winequality-red.csv", delim = ";")
+wine_white <- read_delim("../data/winequality-white.csv", delim = ";")
+
+wine_red$wine_colour <- "Red"
+wine_white$wine_colour <- "White"
+
+# Combine red and white datasets into a unified dataframe and clean column names
+vinho_verde_data <- bind_rows(wine_red, wine_white) %>%
+  rename_with(~ gsub(" ", "_", .))
+
+str(vinho_verde_data)
+```
+
+```{r}
+# ----------------------------------------------------------
+# Data Dictionary: vinho_verde_data
+# ----------------------------------------------------------
+tribble(
+  ~Variable, ~Description,
+  "fixed_acidity", "Tartaric acid content — affects taste, stability",
+  "volatile_acidity", "Acetic acid content — can lead to vinegar taste",
+  "citric_acid", "Citric acid adds freshness and balance",
+  "residual_sugar", "Sugar remaining after fermentation; indicates sweetness",
+  "chlorides", "Salt content of the wine",
+  "free_sulfur_dioxide", "Free SO₂ available for microbial and oxidation control",
+  "total_sulfur_dioxide", "Combined SO₂ (free + bound)",
+  "density", "Density of wine; tied to sugar and alcohol",
+  "pH", "Inverse measure of acidity",
+  "sulphates", "Preservation and longevity influence",
+  "alcohol", "Alcohol by volume",
+  "quality", "Sensory quality score (0–10)",
+  "wine_colour", "Wine Colour: Red or White",
+) %>% 
+  knitr::kable(caption = "Table: Data Dictionary for vinho_verde_data")
+```
+
+```{r}
+
+# ----------------------------------------------------------
+# Load Wine Reviews Dataset
+# ----------------------------------------------------------
+wine_reviews <- read_delim("../data/winemag.csv")
+
+# ----------------------------------------------------------
+# Provide logic for wine variety colours and Filter for Portugal
+# ----------------------------------------------------------
+
+# Define red and white varieties
+red_varieties <- c(
+  "Cabernet Sauvignon", "Merlot", "Pinot Noir", "Syrah", "Malbec", "Tempranillo", 
+  "Sangiovese", "Zinfandel", "Grenache", "Mourvèdre", "Touriga Nacional", "Baga", 
+  "Aragonez", "Tinta Roriz", "Touriga Franca", "Bobal", "Alfrocheiro", "Vinhão", 
+  "Argaman", "Graciano", "Garnacha Tintorera", "Tinta Amarela", "Alicante Bouschet", 
+  "Aragonês", "Baga-Touriga Nacional", "Bastardo", "Bordeaux-style Red Blend", 
+  "Cabernet Sauvignon and Tinta Roriz", "Cabernet Sauvignon-Syrah", "Castelão", 
+  "Espadeiro", "Jaen", "Madeira Blend", "Merlot-Syrah", "Moscatel Roxo", "Petit Verdot", 
+  "Petite Verdot", "Port", "Portuguese Red", "Portuguese Rosé", "Red Blend", 
+  "Rhône-style Red Blend", "Rosé", "Shiraz", "Sousão", "Tinta Barroca", "Tinta Francisca", 
+  "Tinta Negra Mole", "Touriga Nacional Blend", "Touriga Nacional-Cabernet Sauvignon", 
+  "Trincadeira"
+)
+white_varieties <- c(
+  "Chardonnay", "Sauvignon Blanc", "Riesling", "Pinot Grigio", "Viognier", "Gewürztraminer", 
+  "Alvarinho", "Encruzado", "Arinto", "Antão Vaz", "Loureiro", "Fernão Pires", "Albana", 
+  "Alvarinho-Chardonnay", "Avesso", "Azal", "Bical", "Bual", "Côdega do Larinho", "Cerceal", 
+  "Chenin Blanc", "Gewürztraminer-Riesling", "Gouveio", "Malmsey", "Malvasia", 
+  "Malvasia Fina", "Moscatel", "Moscatel Graúdo", "Muscat", "Pinot Blanc", 
+  "Portuguese Sparkling", "Portuguese White", "Rabigato", "Sémillon", "Sercial", "Siria", 
+  "Sparkling Blend", "Verdelho", "White Blend", "White Port", "Códega do Larinho"
+)
+
+
+
+# Filter for Portuguese wines and classify colour based on variety
+wine_reviews_portugal_clean <- wine_reviews %>% 
+  filter(country == "Portugal") %>%
+  mutate(wine_colour = case_when(
+    variety %in% red_varieties ~ "Red",
+    variety %in% white_varieties ~ "White",
+    TRUE ~ "Unknown"
+  )) %>%
+  rename(score = points, price_USD = price) %>%
+  dplyr::select(country, variety, wine_colour, score, price_USD, description) %>%
+  filter(!is.na(score), !is.na(price_USD))
+
+glimpse(wine_reviews_portugal_clean)
+```
+
+```{r}
+# ----------------------------------------------------------
+# Data Dictionary: wine_reviews_portugal_clean
+# ----------------------------------------------------------
+tribble(
+  ~Variable, ~Description,
+  "country", "Country where the wine was produced",
+  "variety", "Grape variety or blend used in the wine",
+  "wine_colour", "Categorical variable indicating if the wine is Red, White, or Unknown",
+  "score", "Wine rating or score assigned by the reviewer (typically 80–100)",
+  "price_USD", "Price of the wine in US Dollars",
+  "description", "Textual review containing tasting notes, aromas, and impressions"
+) %>% 
+  knitr::kable(caption = "Table: Data Dictionary for wine_reviews_portugal_clean")
+```
+
+
+```{r}
+# ----------------------------------------------------------
+# Correlation between Price(USD) and Review Score (Raw and Log)
+# ----------------------------------------------------------
+
+# Create a new column with log-transformed price to normalise distribution
+wine_reviews_portugal_clean$log_price <- log(wine_reviews_portugal_clean$price_USD)
+
+# ----------------------------------------------------------
+# Raw Price Correlation with Score
+# ----------------------------------------------------------
+
+# Calculate Pearson correlation coefficient between raw price and score
+corr_coef_raw <- cor(wine_reviews_portugal_clean$price_USD, wine_reviews_portugal_clean$score, use = "complete.obs")
+cat("Correlation coefficient between price_USD and score:", round(corr_coef_raw, 3), "\n")
+
+# Perform hypothesis test for correlation between raw price and score
+corr_test_raw <- cor.test(wine_reviews_portugal_clean$price_USD, wine_reviews_portugal_clean$score)
+print(corr_test_raw)
+
+# ----------------------------------------------------------
+# Log-Transformed Price Correlation with Score
+# ----------------------------------------------------------
+
+# Calculate Pearson correlation coefficient between log(price) and score
+corr_coef_log <- cor(wine_reviews_portugal_clean$log_price, wine_reviews_portugal_clean$score, use = "complete.obs")
+cat("Correlation coefficient between log(price_USD) and score:", round(corr_coef_log, 3), "\n")
+
+# Perform hypothesis test for correlation between log-transformed price and score
+corr_test_log <- cor.test(wine_reviews_portugal_clean$log_price, wine_reviews_portugal_clean$score)
+print(corr_test_log)
+```
+
+```{r}
+# ----------------------------------------------------------
+# Scatter Plot of Price (USD) vs Score with Linear Regression Line
+# ----------------------------------------------------------
+
+# Create scatter plot of review score vs price with linear regression overlay
+ggplot(wine_reviews_portugal_clean, aes(x = score, y = price_USD)) +
+  geom_point(alpha = 0.6) +  # Plot data points with some transparency
+  geom_smooth(method = "lm", se = TRUE, color = "blue") +  # Add linear regression line with confidence interval
+  theme_minimal() +  # Apply a clean, minimal theme
+  labs(
+    title = "Scatter Plot of Price (USD) vs. Score",  # Main plot title
+    x = "Score",                                      # X-axis label
+    y = "Price (USD)",                                # Y-axis label
+    caption = "Figure: Linear trend between wine review scores and prices (USD).\nNote: Higher scores tend to correlate with higher prices."
+  )
+
+```
+
+```{r}
+# ----------------------------------------------------------
+# Scatter Plot of Log(Price USD) vs Score with Regression Line
+# ----------------------------------------------------------
+
+# Create scatter plot of review score vs. log-transformed price
+ggplot(wine_reviews_portugal_clean, aes(x = score, y = log(price_USD))) +
+  geom_point(alpha = 0.6) +  # Add semi-transparent points for clarity
+  geom_smooth(method = "lm", se = TRUE, color = "darkgreen") +  # Add linear regression with confidence interval
+  theme_minimal() +  # Use a clean and minimal theme
+  labs(
+    title = "Scatter Plot of Log(Price USD) vs. Score",  # Title of the plot
+    x = "Reviewed Score",                                 # X-axis label
+    y = "Log(Price USD)",                                 # Y-axis label
+    caption = "Figure: Relationship between wine review scores and log-transformed prices.\nNote: Log scale reduces skew and highlights proportional differences."
+  )
+```
+
+```{r}
+# ----------------------------------------------------------
+# Scatter Plot of Log(Price USD) vs Score by Wine Colour
+# ----------------------------------------------------------
+
+ggplot(wine_reviews_portugal_clean, aes(x = score, y = log(price_USD))) +
+  
+  # Light red points for red wine
+  geom_jitter(
+    data = subset(wine_reviews_portugal_clean, wine_colour == "Red"),
+    colour = "#E57373", alpha = 0.5, width = 0.3, height = 0, size = 1.8
+  ) +
+  
+  # Light blue points for white wine
+  geom_jitter(
+    data = subset(wine_reviews_portugal_clean, wine_colour == "White"),
+    colour = "#64B5F6", alpha = 0.5, width = 0.3, height = 0, size = 1.8
+  ) +
+  
+  # Regression line for red wine
+  geom_smooth(
+    data = subset(wine_reviews_portugal_clean, wine_colour == "Red"),
+    aes(colour = "Red"),
+    method = "lm", se = FALSE, size = 1
+  ) +
+  
+  # Regression line for white wine
+  geom_smooth(
+    data = subset(wine_reviews_portugal_clean, wine_colour == "White"),
+    aes(colour = "White"),
+    method = "lm", se = FALSE, size = 1
+  ) +
+
+  # Define line colours for legend
+  scale_colour_manual(
+    name = "Wine Colour",
+    values = c("Red" = "firebrick", "White" = "dodgerblue4")
+  ) +
+
+  labs(
+    title = "Log(Price USD) vs. Wine Review Score by Colour",
+    x = "Review Score",
+    y = "Log(Price USD)",
+    caption =  "Figure: Regression analysis showing the relationship between critic review scores and the logarithm of wine prices."
+  ) +
+
+  theme_minimal(base_size = 12) +  # reduce base text size
+  theme(
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10),
+    legend.title = element_text(size = 11),
+    legend.text = element_text(size = 10),
+    legend.background = element_rect(fill = "transparent", colour = NA),
+    legend.key = element_rect(fill = "transparent", colour = NA),
+    plot.caption = element_text(size = 10, hjust = 0)
+  )
+
+```
+
+
+```{r}
+# ----------------------------------------------------------
+# Define Function to Generate Word Cloud from Wine Descriptions
+# ----------------------------------------------------------
+
+create_wordcloud <- function(text_data, caption = NULL, scale_range = c(3, 0.5)) {
+  # Set up layout: Row 1 for caption (20%), Row 2 for word cloud (80%)
+  layout(matrix(1:2, ncol = 1), heights = c(0.2, 0.8))
+  
+  # --- Row 1: Caption ---
+  par(mar = rep(0, 4))
+  plot.new()
+  if (!is.null(caption)) {
+    text(x = 0.5, y = 0.5, labels = caption, cex = 2)
+  }
+  
+  # --- Row 2: Word Cloud ---
+  par(mar = c(0, 0, 0, 0))
+  
+  # Clean and process the text data
+  corpus <- Corpus(VectorSource(text_data))
+  corpus <- tm_map(corpus, content_transformer(tolower))
+  corpus <- tm_map(corpus, removePunctuation)
+  corpus <- tm_map(corpus, removeNumbers)
+  corpus <- tm_map(corpus, removeWords, c(stopwords("english"), "wine"))
+  
+  # Compute word frequencies
+  tdm <- TermDocumentMatrix(corpus)
+  m <- as.matrix(tdm)
+  word_freq <- sort(rowSums(m), decreasing = TRUE)
+  word_df <- data.frame(word = names(word_freq), freq = word_freq)
+  
+  # Generate the word cloud
+  wordcloud(
+    words = word_df$word, freq = word_df$freq, min.freq = 3,
+    max.words = 200, random.order = FALSE, rot.per = 0.35,
+    scale = scale_range, colors = brewer.pal(8, "Dark2")
+  )
+  
+  # Reset layout
+  layout(1)
+}
+```
+
+```{r}
+# ----------------------------------------------------------
+# Generate Word Cloud for Red Wines with Score > 90
+# ----------------------------------------------------------
+
+red_descriptions <- wine_reviews_portugal_clean %>%
+  filter(wine_colour == "Red", score > 90) %>%
+  pull(description)
+
+create_wordcloud(red_descriptions, caption = "Red Wines (Score > 90)", scale_range = c(3, 0.5))
+
+# ----------------------------------------------------------
+# Generate Word Cloud for White Wines with Score > 90
+# ----------------------------------------------------------
+
+white_descriptions <- wine_reviews_portugal_clean %>%
+  filter(wine_colour == "White", score > 90) %>%
+  pull(description)
+
+create_wordcloud(white_descriptions, caption = "White Wines (Score > 90)", scale_range = c(3, 0.5))
+
+
+# ----------------------------------------------------------
+# Generate Combined Word Cloud for All Wines with Score > 90
+# ----------------------------------------------------------
+
+top_descriptions <- wine_reviews_portugal_clean %>%
+  filter(score > 90) %>%
+  pull(description)
+
+create_wordcloud(top_descriptions, caption = "Most Popular Words of Highly Scored Wines (Score > 90)", scale_range = c(3, 0.5))
+
+```
+
+```{r}
+# ----------------------------------------------------------
+# Summary Statistics by Wine Colour
+# ----------------------------------------------------------
+
+summary_stats <- wine_reviews_portugal_clean %>%
+  group_by(wine_colour) %>%
+  summarise(
+    count = n(),
+    mean_score = mean(score, na.rm = TRUE),
+    sd_score = sd(score, na.rm = TRUE),
+    mean_price_USD = mean(price_USD, na.rm = TRUE),
+    sd_price_USD = sd(price_USD, na.rm = TRUE)
+  )
+
+# Print the summary statistics
+print(summary_stats)
+```
+
+```{r}
+# ----------------------------------------------------------
+# Summary Statistics by Wine Colour
+# ----------------------------------------------------------
+
+summary_stats <- wine_reviews_portugal_clean %>%
+  group_by(wine_colour) %>%
+  summarise(
+    count = n(),
+    mean_score = mean(score, na.rm = TRUE),
+    sd_score = sd(score, na.rm = TRUE),
+    mean_price_USD = mean(price_USD, na.rm = TRUE),
+    sd_price_USD = sd(price_USD, na.rm = TRUE)
+  )
+```
+
+```{r}
+# ----------------------------------------------------------
+# Summary Statistics by Wine Colour
+# ----------------------------------------------------------
+
+summary_stats <- wine_reviews_portugal_clean %>%
+  group_by(wine_colour) %>%
+  summarise(
+    count = n(),
+    mean_score = mean(score, na.rm = TRUE),
+    sd_score = sd(score, na.rm = TRUE),
+    mean_price_USD = mean(price_USD, na.rm = TRUE),
+    sd_price_USD = sd(price_USD, na.rm = TRUE)
+  )
+
+# Print the summary statistics
+print(summary_stats)
+```
+
+```{r}
+# ----------------------------------------------------------
+# Distribution of Wine Review Scores by Wine Colour
+# ----------------------------------------------------------
+
+# Bin the review scores and count frequency by wine_colour
+ggplot(wine_reviews_portugal_clean, aes(x = factor(score), fill = wine_colour)) +
+  geom_bar(position = "dodge") +  # Side-by-side bars for Red and White
+  labs(
+    title = "Wine Review Scores Distribution by Wine Colour",       # Plot title
+    x = "Review Score",                                              # X-axis label
+    y = "Number of Wines",                                           # Y-axis label
+    fill = "Wine Colour",                                            # Legend title
+    caption = "Figure: Distribution of critic review scores across red and white Portuguese wines."  # Caption
+  ) +
+  scale_fill_manual(values = c("Red" = "darkred", "White" = "goldenrod")) +  # Custom fill colours
+  theme_minimal(base_size = 14) +  # Minimal clean theme with readable font size
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),  # Centre and bold title
+    axis.text = element_text(color = "black"),              # Black axis labels
+    axis.title = element_text(color = "black"),             # Black axis titles
+    legend.title = element_text(face = "bold"),             # Bold legend title
+    plot.caption = element_text(size = 10, colour = "gray30", hjust = 0)  # Styled caption
+  )
+```
+
+
+```{r}
+# ----------------------------------------------------------
+# Robust Summary Statistics (Median & IQR) by Wine Colour
+# ----------------------------------------------------------
+
+robust_summary_stats <- wine_reviews_portugal_clean %>%
+  group_by(wine_colour) %>%
+  summarise(
+    count = n(),
+    median_score = median(score, na.rm = TRUE),
+    IQR_score = IQR(score, na.rm = TRUE),
+    median_price_USD = median(price_USD, na.rm = TRUE),
+    IQR_price_USD = IQR(price_USD, na.rm = TRUE)
+  )
+
+# Print the robust summary statistics
+print(robust_summary_stats)
+
+```
+
+```{r}
+# ----------------------------------------------------------
+# Filter Out Price Outliers (Above 95th Percentile) by Wine Colour
+# ----------------------------------------------------------
+
+wine_reviews_portugal_filtered <- wine_reviews_portugal_clean %>%
+  group_by(wine_colour) %>%
+  filter(price_USD <= quantile(price_USD, 0.95, na.rm = TRUE)) %>%
+  ungroup()
+
+# ----------------------------------------------------------
+# Define Custom Colors for Wine Colour
+# ----------------------------------------------------------
+
+my_colors <- c("Red" = "darkred", "White" = "goldenrod")
+
+# ----------------------------------------------------------
+# Violin Plot: Distribution of Wine Scores by Colour
+# ----------------------------------------------------------
+
+p1 <- ggplot(wine_reviews_portugal_filtered, aes(x = wine_colour, y = score, fill = wine_colour)) +
+  geom_violin(trim = FALSE) +
+  geom_boxplot(width = 0.1, fill = "white", outlier.shape = NA) +
+  labs(
+    title = "Distribution of Wine Scores",
+    x = "Wine Colour",
+    y = "Score"
+  ) +
+  theme_minimal() +
+  scale_fill_manual(values = my_colors) +
+  theme(legend.position = "none")
+
+```
+
+
+```{r}
+# ----------------------------------------------------------
+# Violin Plot: Distribution of Wine Prices by Colour
+# ----------------------------------------------------------
+
+p2 <- ggplot(wine_reviews_portugal_filtered, aes(x = wine_colour, y = price_USD, fill = wine_colour)) +
+  geom_violin(trim = FALSE) +
+  geom_boxplot(width = 0.1, fill = "white", outlier.shape = NA) +
+  labs(
+    title = "Distribution of Wine Prices (USD)",
+    x = "Wine Colour",
+    y = "Price (USD)"
+  ) +
+  theme_minimal() +
+  scale_fill_manual(values = my_colors) +
+  theme(legend.position = "none")
+```
+
+
+```{r}
+# ----------------------------------------------------------
+# Violin Plot: Distribution of Log(Price USD) by Wine Colour
+# ----------------------------------------------------------
+
+p3 <- ggplot(wine_reviews_portugal_filtered, aes(x = wine_colour, y = log(price_USD), fill = wine_colour)) +
+  geom_violin(trim = FALSE) +
+  geom_boxplot(width = 0.1, fill = "white", outlier.shape = NA) +
+  labs(
+    title = "Distribution of Log(Price USD)",
+    x = "Wine Colour",
+    y = "Log(Price USD)"
+  ) +
+  theme_minimal() +
+  scale_fill_manual(values = my_colors) +
+  theme(legend.position = "none")
+```
+
+
+```{r}
+# ----------------------------------------------------------
+# Arrange the Two Plots Side by Side
+# ----------------------------------------------------------
+
+grid.arrange(p1, p2, ncol = 2)
+
+```
+
+
+
+
+
+```{r}
+# ----------------------------------------------------------
+# Summary of Vinho Verde Data
+# ----------------------------------------------------------
+dim(vinho_verde_data)
+head(vinho_verde_data, 3)
+table(vinho_verde_data$wine_colour)
+summary(vinho_verde_data$quality)
+glimpse(vinho_verde_data)
+```
+
+```{r}
+# ----------------------------------------------------------
+# Convert Quality Columns for Modeling and Plotting
+# ----------------------------------------------------------
+# Convert quality to an ordered factor for ordinal modeling
+vinho_verde_data$quality <- factor(vinho_verde_data$quality, ordered = TRUE)
+# Create a numeric version of quality for regression evaluation
+vinho_verde_data$quality_num <- as.numeric(as.character(vinho_verde_data$quality))
+# Create a factor version for plotting purposes
+vinho_verde_data$quality_factor <- factor(as.character(vinho_verde_data$quality))
+# Ensure wine_colour is a factor with consistent level order
+vinho_verde_data$wine_colour <- factor(vinho_verde_data$wine_colour, levels = c("Red", "White"))
+```
+
+```{r}
+
+# ----------------------------------------------------------
+# Distribution of Wine Quality Ratings by Wine Colour
+# ----------------------------------------------------------
+
+ggplot(vinho_verde_data, aes(x = quality_factor, fill = wine_colour)) +
+  geom_bar(position = "dodge") +  # Side-by-side bars for each wine colour
+  labs(
+    title = "Wine Quality Ratings Distribution by Wine Colour",        # Plot title
+    x = "Quality Rating",                                              # X-axis label
+    y = "Number of Wines",                                             # Y-axis label
+    fill = "Wine Colour",                                              # Legend title
+    caption = "Figure: Distribution of wine quality scores by wine colour (Vinho Verde dataset)."  # Caption
+  ) +
+  scale_fill_manual(values = c("Red" = "darkred", "White" = "goldenrod")) +  # Custom colours
+  theme_minimal(base_size = 14) +  # Clean theme with readable font size
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),  # Centred and bolded title
+    axis.text = element_text(color = "black"),              # Axis label colour
+    axis.title = element_text(color = "black"),             # Axis title colour
+    legend.title = element_text(face = "bold"),             # Bold legend
+    plot.caption = element_text(size = 10, colour = "gray30", hjust = 0)  # Styled caption
+  )
+```
+
+```{r}
+# ----------------------------------------------------------
+# Correlation Matrix of Numeric Features
+# ----------------------------------------------------------
+# Extract numeric features and rename quality for correlation analysis
+numeric_features <- vinho_verde_data %>% 
+  select_if(is.numeric) %>% 
+  rename(Quality = quality_num)
+
+# Save current graphics settings
+old_par <- par(no.readonly = TRUE)
+
+# Set outer margin to allow space for the title
+par(oma = c(0, 0, 3, 0))  # top margin = 3 lines
+
+# Format column names nicely
+colnames(numeric_features) <- str_to_title(gsub("_", " ", colnames(numeric_features)))
+
+# Plot the correlation matrix with black labels
+corrplot(
+  cor(numeric_features),
+  method = "color",
+  tl.cex = 0.8,
+  tl.col = "black"
+)
+
+# Add a centred heading at the top
+mtext("Correlation Matrix of Wine Data", outer = TRUE, cex = 1.5, col = "black", side = 3, line = 1, adj = 0.5)
+
+# Restore original graphics settings
+par(old_par)
+```
+
+```{r}
+# ----------------------------------------------------------
+# Train-Test Split for Modeling
+# ----------------------------------------------------------
+# Generate random index for 80% training split
+vinho_verde_index <- sample(seq_len(nrow(vinho_verde_data)), size = 0.8 * nrow(vinho_verde_data))
+# Create training set (80% of data)
+vinho_verde_train_set <- vinho_verde_data[vinho_verde_index, ]
+# Create test set (remaining 20% of data)
+vinho_verde_test_set <- vinho_verde_data[-vinho_verde_index, ]
+
+# Subset training set for numeric modeling
+vinho_verde_train_numeric <- vinho_verde_train_set %>% dplyr::select(quality, fixed_acidity:alcohol)
+# Subset test set for numeric modeling
+vinho_verde_test_numeric <- vinho_verde_test_set %>% dplyr::select(quality, fixed_acidity:alcohol)
+
+# Store ordered quality levels for consistency
+quality_levels <- levels(vinho_verde_data$quality)
+# Apply ordered factor to training set
+vinho_verde_train_numeric$quality <- factor(vinho_verde_train_numeric$quality, levels = quality_levels, ordered = TRUE)
+# Apply ordered factor to test set
+vinho_verde_test_numeric$quality <- factor(vinho_verde_test_numeric$quality, levels = quality_levels, ordered = TRUE)
+```
+
+```{r}
+# ----------------------------------------------------------
+# Fit Ordinal Forest Model
+# ----------------------------------------------------------
+# Determine mtry parameter for ordinal forest
+mtry_val <- floor(sqrt(ncol(vinho_verde_train_numeric) - 1))
+of_model <- ordfor(depvar = "quality", data = as.data.frame(vinho_verde_train_numeric),
+                   nsets = 100, ntreeperdiv = 100, ntreefinal = 500, mtry = mtry_val)
+
+# Generate ordinal forest predictions on the test set
+preds <- predict(of_model, newdata = as.data.frame(vinho_verde_test_numeric))[[1]]
+# Recode predicted class indices to original quality levels
+preds_recoded <- factor(quality_levels[as.numeric(preds)], ordered = TRUE, levels = quality_levels)
+```
+
+```{r}
+# ----------------------------------------------------------
+# Model Evaluation
+# ----------------------------------------------------------
+# Create a confusion matrix to evaluate classification accuracy
+conf_matrix <- table(Predicted = preds_recoded, Actual = vinho_verde_test_numeric$quality)
+conf_matrix
+
+# Calculate overall prediction accuracy
+accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
+# Compute weighted Kappa to assess ordinal agreement
+kappa <- kappa2(data.frame(Predicted = preds_recoded, Actual = vinho_verde_test_numeric$quality), weight = "squared")
+
+# Convert actual quality values to numeric for RMSE and MAE
+actual_numeric <- as.numeric(as.character(vinho_verde_test_numeric$quality))
+# Convert predicted quality values to numeric for RMSE and MAE
+predicted_numeric <- as.numeric(as.character(preds_recoded))
+# Calculate Root Mean Squared Error
+rmse <- sqrt(mean((predicted_numeric - actual_numeric)^2))
+# Calculate Mean Absolute Error
+mae <- mean(abs(predicted_numeric - actual_numeric))
+
+cat("Accuracy:", accuracy, "\n")
+print(kappa)
+cat("RMSE:", rmse, "\n")
+cat("MAE:", mae, "\n")
+```
+
+```{r}
+# ----------------------------------------------------------
+# Plot: Actual vs Predicted Wine Quality
+# ----------------------------------------------------------
+
+# Create dataframe containing actual wine quality ratings from the test set
+actual_df <- data.frame(WineQuality = vinho_verde_test_numeric$quality, Source = "Actual")
+
+# Create dataframe containing predicted wine quality ratings
+pred_df <- data.frame(WineQuality = preds_recoded, Source = "Predicted")
+
+# Combine the actual and predicted results into a single dataset
+combined <- rbind(actual_df, pred_df)
+
+# Count the number of wines for each quality rating by source (Actual vs Predicted)
+combined <- combined %>% dplyr::count(WineQuality, Source)
+
+# Generate a grouped bar chart to visually compare actual and predicted wine quality distributions
+ggplot(combined, aes(x = WineQuality, y = n, fill = Source)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(
+    title = "Actual vs Predicted Wine Quality",
+    x = "Quality Rating",
+    y = "Count",
+    caption = "Figure: Comparison of actual and predicted quality ratings."
+  ) +
+  theme_minimal()
+```
+
+```{r}
+# ----------------------------------------------------------
+# Variable Importance Plot
+# ----------------------------------------------------------
+
+# Create a dataframe from the variable importance vector of the ordinal forest model
+varimp_df <- data.frame(Predictor = names(of_model$varimp), Importance = of_model$varimp)
+
+# Clean and format predictor names (e.g., replace underscores with spaces and capitalise for readability)
+varimp_df$Predictor <- str_to_title(gsub("_", " ", varimp_df$Predictor))
+
+# Sort the dataframe in ascending order of importance for clearer visual ranking
+varimp_df <- varimp_df %>% arrange(Importance)
+
+# Convert Predictor column to factor to maintain the sorted order in the plot
+varimp_df$Predictor <- factor(varimp_df$Predictor, levels = varimp_df$Predictor)
+
+# Create a horizontal bar chart showing the importance of each predictor variable
+ggplot(varimp_df, aes(x = Predictor, y = Importance)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Variable Importance (Ordinal Forest)",
+    x = "", y = "Importance",
+    caption = "Figure: Importance of variables in predicting wine quality"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+# ----------------------------------------------------------
+# T-Test: Quality vs Review Score by Wine Colour
+# ----------------------------------------------------------
+
+# Combine both datasets into a single frame with aligned structure
+merged_quality_score <- bind_rows(
+  vinho_verde_data %>% transmute(Score = quality_num, Colour = wine_colour, Source = "Quality"),
+  wine_reviews_portugal_clean %>% transmute(Score = score, Colour = wine_colour, Source = "Review Score")
+) %>% 
+  filter(Colour %in% c("Red", "White"))
+
+# T-test for Red wines
+t_test_red <- t.test(
+  Score ~ Source,
+  data = merged_quality_score %>% filter(Colour == "Red")
+)
+
+# T-test for White wines
+t_test_white <- t.test(
+  Score ~ Source,
+  data = merged_quality_score %>% filter(Colour == "White")
+)
+
+# Output results
+cat("T-test Results for Red Wines:
+")
+print(t_test_red)
+cat("
+T-test Results for White Wines:
+")
+print(t_test_white)
+```
+
+```{r}
+# ----------------------------------------------------------
+# Smoothed Density Plot: Scaled Quality vs Review Score by Wine Colour
+# ----------------------------------------------------------
+
+# Create standardised scores (z-scores) for both datasets and combine into one dataframe
+scaled_data <- bind_rows(
+  # Standardise the UCI Vinho Verde wine quality scores
+  vinho_verde_data %>%
+    transmute(
+      Colour = wine_colour,
+      Score_z = scale(quality_num)[,1],  # z-score for wine quality
+      Source = "Quality"
+    ),
+  # Standardise the wine review scores from the Portuguese reviews dataset
+  wine_reviews_portugal_clean %>%
+    transmute(
+      Colour = wine_colour,
+      Score_z = scale(score)[,1],  # z-score for review score
+      Source = "Review Score"
+    )
+) %>%
+  filter(Colour %in% c("Red", "White"))  # Only include Red and White wines
+
+# Generate a palette with visually distinct colours
+colors <- createPalette(10, c("#0D58FF", "#4B7A00"))
+
+# Display the colours and swatches (for previewing)
+list(colors)
+swatch(colors)
+
+# Assign names to the colour vector for use in scale_fill_manual
+names(colors) <- unique(scaled_data$Source)
+
+# Create density plots of standardised scores, grouped by data source and faceted by wine colour
+ggplot(scaled_data, aes(x = Score_z, fill = Source)) +
+  geom_density(alpha = 0.6, bw = 0.4, color = NA) +  # Smoothed density curves with transparency
+  facet_wrap(~ Colour, scales = "free") +  # Separate plots for Red and White wine
+  labs(
+    title = "Standardized Distributions of Quality and Review Score by Wine Colour",
+    x = "Standardized Score (Z)",
+    y = "Density",
+    fill = "Source",
+    caption = "Figure: Smoothed density curves comparing UCI quality scores and review scores by wine colour."
+  ) +
+  scale_fill_manual(values = colors) +  # Apply custom colour scheme
+  theme_minimal() +
+  theme(
+    legend.position = "top",
+    plot.title.position = "plot",
+    plot.margin = grid::unit(c(20, 10, 10, 10), "pt")  # Add spacing around the plot
+  )
+```
+
+```{r}
+# ----------------------------------------------------------
+# T-Test: Score by Wine Colour in Wine Reviews
+# ----------------------------------------------------------
+# Perform t-test to compare review scores by wine colour
+t_test_reviews_colour <- t.test(score ~ wine_colour, data = wine_reviews_portugal_clean)
+t_test_reviews_colour
+```
+
+```{r}
+# ----------------------------------------------------------
+# Boxplot: Review Score by Wine Colour
+# ----------------------------------------------------------
+# Create a boxplot to compare review scores for red and white wines
+ggplot(wine_reviews_portugal_clean, aes(x = wine_colour, y = score, fill = wine_colour)) +
+  geom_boxplot() +  # Use boxplots to show distribution of review scores
+  labs(
+    title = "Wine Review Scores by Colour",  # Plot title
+    x = "Wine Colour",                       # X-axis label
+    y = "Review Score",                      # Y-axis label
+    caption = "Figure: Boxplot of review scores for red vs white Portuguese wines"  # Figure caption
+  ) +
+  scale_fill_manual(values = c("Red" = "darkred", "White" = "goldenrod")) +  # Set custom colours
+  theme_minimal() +  # Clean minimal theme for publication-style plots
+  theme(legend.position = "none")  # Remove redundant legend (colour is already on x-axis)
+```
+
+```{r}
+##############################################
+# Shiny App: Wine Quality Predictor using Ranger 
+# with Consistent Column Order in the Output Tabs
+#
+# Assumptions (global processing has been run):
+#  - vinho_verde_data is loaded and processed:
+#      • vinho_verde_data$quality is an ordered factor,
+#      • vinho_verde_data$wine_colour is a factor with levels c("Red", "White"),
+#      • column names use underscores (e.g., fixed_acidity).
+#  - train_set and test_set are created (80/20 split from vinho_verde_data).
+#  - feature_ranges is computed.
+#  - quality_num is created (numeric version of quality).
+#  - Minimal numeric train/test sets (train_set_numeric_df, test_set_numeric_df)
+#    have been created.
+##############################################
+
+# ----------------------------------------------------------
+# Compute Feature Ranges for UI Inputs
+# ----------------------------------------------------------
+feature_ranges <- vinho_verde_data %>%
+  summarise(
+    fixed_acidity_min    = min(fixed_acidity),
+    fixed_acidity_max    = max(fixed_acidity),
+    volatile_acidity_min = min(volatile_acidity),
+    volatile_acidity_max = max(volatile_acidity),
+    citric_acid_min      = min(citric_acid),
+    citric_acid_max      = max(citric_acid),
+    residual_sugar_min   = min(residual_sugar),
+    residual_sugar_max   = max(residual_sugar),
+    chlorides_min        = min(chlorides),
+    chlorides_max        = max(chlorides),
+    free_sulfur_dioxide_min   = min(free_sulfur_dioxide),
+    free_sulfur_dioxide_max   = max(free_sulfur_dioxide),
+    total_sulfur_dioxide_min  = min(total_sulfur_dioxide),
+    total_sulfur_dioxide_max  = max(total_sulfur_dioxide),
+    density_min          = min(density),
+    density_max          = max(density),
+    pH_min               = min(pH),
+    pH_max               = max(pH),
+    sulphates_min        = min(sulphates),
+    sulphates_max        = max(sulphates),
+    alcohol_min          = min(alcohol),
+    alcohol_max          = max(alcohol)
+  )
+print(feature_ranges)
+
+# -------------------------------
+# Define Global Column Order for Outputs
+# -------------------------------
+desired_order_history <- c("Timestamp", "Alcohol", "Density", "Volatile Acidity", 
+                           "Chlorides", "Free Sulfur Dioxide", "Residual Sugar", 
+                           "Total Sulfur Dioxide", "Citric Acid", "Sulphates", 
+                           "Fixed Acidity", "pH", "Wine Colour", "Predicted Quality")
+
+desired_order_filtered <- c("Alcohol", "Volatile Acidity", "Density",  
+                            "Chlorides", "Free Sulfur Dioxide", "Residual Sugar", 
+                            "Total Sulfur Dioxide", "Citric Acid", "Sulphates", 
+                            "Fixed Acidity", "pH", "Wine Colour", "Quality")
+```
+
+```{r}
+# -------------------------------
+# Cache the Ranger Model Once at Startup
+# -------------------------------
+predictors_used <- c("fixed_acidity", "volatile_acidity", "citric_acid", "residual_sugar",
+                     "chlorides", "free_sulfur_dioxide", "total_sulfur_dioxide", "density",
+                     "pH", "sulphates", "alcohol", "Wine Colour")
+model_cache <- reactiveVal({
+  set.seed(123)
+  ranger(quality_num ~ fixed_acidity + volatile_acidity + citric_acid +
+           residual_sugar + chlorides + free_sulfur_dioxide +
+           total_sulfur_dioxide + density + pH + sulphates + alcohol + wine_colour,
+         data = vinho_verde_train_set, num.trees = 500, importance = "impurity")
+})
+
+```
