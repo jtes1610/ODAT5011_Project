@@ -182,6 +182,8 @@ preds <- predict(of_model, newdata = as.data.frame(vinho_verde_test_numeric))[[1
 preds_recoded <- factor(quality_levels[as.numeric(preds)], ordered = TRUE, levels = quality_levels)
 
 
+
+
 # ----------------------------------------------------------
 # Compute Feature Ranges for UI Inputs
 # ----------------------------------------------------------
@@ -224,4 +226,19 @@ desired_order_filtered <- c("Alcohol", "Volatile Acidity", "Density",
                             "Chlorides", "Free Sulfur Dioxide", "Residual Sugar", 
                             "Total Sulfur Dioxide", "Citric Acid", "Sulphates", 
                             "Fixed Acidity", "pH", "Wine Colour", "Quality")
+
+
+# -------------------------------
+# Cache the Ranger Model Once at Startup
+# -------------------------------
+predictors_used <- c("fixed_acidity", "volatile_acidity", "citric_acid", "residual_sugar",
+                     "chlorides", "free_sulfur_dioxide", "total_sulfur_dioxide", "density",
+                     "pH", "sulphates", "alcohol", "Wine Colour")
+model_cache <- reactiveVal({
+    set.seed(123)
+    ranger(quality_num ~ fixed_acidity + volatile_acidity + citric_acid +
+               residual_sugar + chlorides + free_sulfur_dioxide +
+               total_sulfur_dioxide + density + pH + sulphates + alcohol + wine_colour,
+           data = vinho_verde_train_set, num.trees = 500, importance = "impurity")
+})
 

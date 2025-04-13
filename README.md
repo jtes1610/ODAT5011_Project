@@ -32,8 +32,6 @@ Together, these datasets are used to explore the relationship between chemical a
 ------------------------------------------------------------------------
 
 
-## 📁 Folder Structure
-
 ``` text
 ODAT5011_Project/
 ├── app/                    # Shiny application files
