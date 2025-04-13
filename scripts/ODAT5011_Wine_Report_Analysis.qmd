@@ -989,6 +989,7 @@ This report presents a comprehensive analysis of Portuguese wines using two comp
   - An **ordinal forest model** was trained to predict wine quality using 80% of the data and evaluated on the remaining 20%.
   - The model achieved an **accuracy of `r round(accuracy * 100, 1)`%**, a **Cohen’s weighted Kappa of `r round(kappa$value, 3)`**, **RMSE of `r round(rmse, 3)`**, and **MAE of `r round(mae, 3)`**, indicating strong agreement between predicted and actual quality levels.
   - The **variable importance plot** showed that **alcohol** was by far the most influential predictor, followed by **density** and **volatile acidity**. This aligns with the correlation analysis and confirms the significance of these variables in driving wine quality.
+  
 
 ### Conclusion
 
@@ -996,7 +997,20 @@ This project demonstrates how structured and unstructured data can be integrated
 
 The findings are particularly relevant for industry stakeholders like **Treasury Wine Estates (TWE)**, who can benefit from the modelling framework to optimise production, marketing, and pricing strategies. The accompanying **interactive Shiny app** further enables users to explore and predict wine quality dynamically, making the results accessible and actionable for broader audiences.
 
+------------------------------------------------------------------------
 
+## 🔗 Access the Interactive Shiny App
+
+To explore the findings of this report through an interactive dashboard, please visit the deployed Shiny app below:
+
+[👉 Launch the Wine Quality Dashboard](https://jtes1610.shinyapps.io/wine-quality-dashboard/)
+
+The app enables users to:
+- Predict wine quality using physicochemical attributes,
+- Compare review scores and quality ratings by wine colour,
+- Visualise descriptive language used in high-scoring wines.
+
+This tool complements the analysis presented in the report by offering a dynamic interface for further exploration and interpretation.
 ------------------------------------------------------------------------
 
 ## References

@@ -1,0 +1,10 @@
+name: wine-quality-dashboard
+title:
+username: jtes1610
+account: jtes1610
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 14510356
+bundleId:
+url: https://jtes1610.shinyapps.io/wine-quality-dashboard/
+version: 1
