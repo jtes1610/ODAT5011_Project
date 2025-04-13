@@ -999,7 +999,7 @@ The findings are particularly relevant for industry stakeholders like **Treasury
 
 ------------------------------------------------------------------------
 
-## 🔗 Access the Interactive Shiny App
+##  Access the Interactive Shiny App
 
 To explore the findings of this report through an interactive dashboard, please visit the deployed Shiny app below:
 
