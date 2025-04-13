@@ -40,8 +40,8 @@ set.seed(123)  # This initial seed is sufficient for reproducibility
 # ----------------------------------------------------------
 
 
-vinho_verde_data <- readRDS("app/app_data/vinho_verde_data.rds")
-wine_reviews_portugal_clean <- readRDS("app/app_data/wine_reviews_portugal_clean.rds")
+vinho_verde_data <- read_csv("app_data/vinho_verde_data_clean.csv", show_col_types = FALSE)
+wine_reviews_portugal_clean <- read_csv("app_data/wine_reviews_portugal_clean.csv", show_col_types = FALSE)
 
 
 
