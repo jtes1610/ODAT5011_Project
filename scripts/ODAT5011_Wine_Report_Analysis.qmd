@@ -1014,6 +1014,7 @@ The app enables users to:
 - Visualise descriptive language used in high-scoring wines.
 
 This tool complements the analysis presented in the report by offering a dynamic interface for further exploration and interpretation.
+
 ------------------------------------------------------------------------
 
 ## References
