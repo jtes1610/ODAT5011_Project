@@ -259,7 +259,7 @@ function(input, output, session) {
                  x = "", y = "Importance",
             caption = "Figure: Importance of variables in predicting wine quality"
     ) +
-        theme_minimal(base=16) +  # Clean theme with readable font size
+            theme_minimal(base_size=15) +  # Clean theme with readable font size
             theme(
                 plot.title = element_text(hjust = 0.5, face = "bold"),  # Centred and bolded title
                 axis.text = element_text(color = "black"),              # Axis label colour

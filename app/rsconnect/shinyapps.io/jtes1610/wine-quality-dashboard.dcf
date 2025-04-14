@@ -5,6 +5,6 @@ account: jtes1610
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 14510356
-bundleId: 10110013
+bundleId: 10110087
 url: https://jtes1610.shinyapps.io/wine-quality-dashboard/
 version: 1
