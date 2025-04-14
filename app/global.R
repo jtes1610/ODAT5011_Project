@@ -1,7 +1,7 @@
 # ----------------------------------------------------------
 # Setup: Environment Configuration
 # ----------------------------------------------------------
-knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
 rm(list = ls())
 gc()
 
@@ -9,129 +9,82 @@ gc()
 # Load Required Libraries
 # ----------------------------------------------------------
 
-# Libraries for data manipulation, modeling, and visualization
 library(tidyverse)       # Core data manipulation and visualisation tools 
-library(corrplot)        # Visualizing correlation matrices
-library(randomForest)    # Traditional Random Forest modeling
+library(corrplot)        # Visualising correlation matrices
+library(randomForest)    # Traditional Random Forest modelling
 library(broom)           # Tidying model outputs into tibbles
 library(shiny)           # Building interactive web applications
 library(bslib)           # Theming and layout tools for Shiny apps
-library(tm)              # Text mining framework (cleaning and tokenising)
-library(wordcloud)       # Generating word cloud visualizations
-library(RColorBrewer)    # Color palettes for better plot aesthetics
-library(gridExtra)       # Arranging multiple ggplot objects in a grid
-library(ordinalForest)   # Ordinal random forest modeling for ordered outcomes
-library(MASS)            # Classic stats functions, including LDA and distributions
-library(irr)             # Inter-rater reliability metrics (e.g., Cohen’s Kappa)
-library(caret)           # Classification and Regression Training framework
-library(ggplot2)         # Grammar of graphics visualisation package 
-library(stringr)         # String manipulation utilities
-library(ranger)          # Fast implementation of Random Forests
-library(readr)           # Fast and tidy reading of CSV and text files
-library(Polychrome)      # Load Polychrome for generating visually distinct colour palettes
-
-
-
-# Set seed for reproducibility
-set.seed(123)  # This initial seed is sufficient for reproducibility
+library(tm)              # Text mining (tokenising + cleaning)
+library(wordcloud)       # Word cloud visualisation
+library(RColorBrewer)    # Colour palettes
+library(gridExtra)       # For arranging ggplot objects in grid
+library(ordinalForest)   # Ordinal random forest modelling
+library(MASS)            # Classic stats (e.g. LDA)
+library(irr)             # Inter-rater reliability stats
+library(caret)           # Training framework
+library(ggplot2)         # Grammar of graphics
+library(stringr)         # String manipulation
+library(ranger)          # Fast random forest implementation
+library(readr)           # Fast CSV reading
+library(Polychrome)      # Distinct colour palettes
 
 # ----------------------------------------------------------
-# Load the UCI Wine Quality and Wine Reviews Datasets
+# Set Seed for Reproducibility
 # ----------------------------------------------------------
+set.seed(123)
 
-
+# ----------------------------------------------------------
+# Load Cleaned Datasets
+# ----------------------------------------------------------
 vinho_verde_data <- read_csv("app_data/vinho_verde_data_clean.csv", show_col_types = FALSE)
 wine_reviews_portugal_clean <- read_csv("app_data/wine_reviews_portugal_clean.csv", show_col_types = FALSE)
 
-
+# ----------------------------------------------------------
+# Load Pretrained Models
+# ----------------------------------------------------------
+of_model <- readRDS("models/of_model.rds")
+rf_model <- readRDS("models/rf_model.rds")
 
 # ----------------------------------------------------------
-# Correlation between Price(USD) and Review Score (Raw and Log)
+# Prepare Wine Reviews Data (Log Price)
 # ----------------------------------------------------------
-
-# Create a new column with log-transformed price to normalise distribution
 wine_reviews_portugal_clean$log_price <- log(wine_reviews_portugal_clean$price_USD)
 
-# ----------------------------------------------------------
-# Raw Price Correlation with Score
-# ----------------------------------------------------------
-
-# Calculate Pearson correlation coefficient between raw price and score
 corr_coef_raw <- cor(wine_reviews_portugal_clean$price_USD, wine_reviews_portugal_clean$score, use = "complete.obs")
-
-
-# Perform hypothesis test for correlation between raw price and score
 corr_test_raw <- cor.test(wine_reviews_portugal_clean$price_USD, wine_reviews_portugal_clean$score)
 
-# ----------------------------------------------------------
-# Log-Transformed Price Correlation with Score
-# ----------------------------------------------------------
-
-# Calculate Pearson correlation coefficient between log(price) and score
 corr_coef_log <- cor(wine_reviews_portugal_clean$log_price, wine_reviews_portugal_clean$score, use = "complete.obs")
-
-
-# Perform hypothesis test for correlation between log-transformed price and score
 corr_test_log <- cor.test(wine_reviews_portugal_clean$log_price, wine_reviews_portugal_clean$score)
 
 # ----------------------------------------------------------
-# Convert Quality Columns for Modeling and Plotting
+# Preprocess Vinho Verde Data
 # ----------------------------------------------------------
-# Convert quality to an ordered factor for ordinal modeling
 vinho_verde_data$quality <- factor(vinho_verde_data$quality, ordered = TRUE)
-# Create a numeric version of quality for regression evaluation
 vinho_verde_data$quality_num <- as.numeric(as.character(vinho_verde_data$quality))
-# Create a factor version for plotting purposes
 vinho_verde_data$quality_factor <- factor(as.character(vinho_verde_data$quality))
-# Ensure wine_colour is a factor with consistent level order
 vinho_verde_data$wine_colour <- factor(vinho_verde_data$wine_colour, levels = c("Red", "White"))
 
-
 # ----------------------------------------------------------
-# Correlation Matrix of Numeric Features
+# Split into Train/Test (for Predictions & Evaluation)
 # ----------------------------------------------------------
-# Extract numeric features and rename quality for correlation analysis
-numeric_features <- vinho_verde_data %>% 
-    select_if(is.numeric) %>% 
-    rename(Quality = quality_num)
-
-# ----------------------------------------------------------
-# Train-Test Split for Modeling
-# ----------------------------------------------------------
-# Generate random index for 80% training split
 vinho_verde_index <- sample(seq_len(nrow(vinho_verde_data)), size = 0.8 * nrow(vinho_verde_data))
-# Create training set (80% of data)
 vinho_verde_train_set <- vinho_verde_data[vinho_verde_index, ]
-# Create test set (remaining 20% of data)
-vinho_verde_test_set <- vinho_verde_data[-vinho_verde_index, ]
+vinho_verde_test_set  <- vinho_verde_data[-vinho_verde_index, ]
 
-# Subset training set for numeric modeling
-vinho_verde_train_numeric <- vinho_verde_train_set %>% dplyr::select(quality, fixed_acidity:alcohol)
-# Subset test set for numeric modeling
-vinho_verde_test_numeric <- vinho_verde_test_set %>% dplyr::select(quality, fixed_acidity:alcohol)
+# Prepare numeric train/test sets
+vinho_verde_train_numeric <- vinho_verde_train_set %>% select(quality, fixed_acidity:alcohol)
+vinho_verde_test_numeric  <- vinho_verde_test_set  %>% select(quality, fixed_acidity:alcohol)
 
-# Store ordered quality levels for consistency
 quality_levels <- levels(vinho_verde_data$quality)
-# Apply ordered factor to training set
 vinho_verde_train_numeric$quality <- factor(vinho_verde_train_numeric$quality, levels = quality_levels, ordered = TRUE)
-# Apply ordered factor to test set
-vinho_verde_test_numeric$quality <- factor(vinho_verde_test_numeric$quality, levels = quality_levels, ordered = TRUE)
+vinho_verde_test_numeric$quality  <- factor(vinho_verde_test_numeric$quality, levels = quality_levels, ordered = TRUE)
 
 # ----------------------------------------------------------
-# Fit Ordinal Forest Model
+# Ordinal Forest Predictions (Test Set)
 # ----------------------------------------------------------
-# Determine mtry parameter for ordinal forest
-mtry_val <- floor(sqrt(ncol(vinho_verde_train_numeric) - 1))
-of_model <- ordfor(depvar = "quality", data = as.data.frame(vinho_verde_train_numeric),
-                   nsets = 100, ntreeperdiv = 100, ntreefinal = 500, mtry = mtry_val)
-
-# Generate ordinal forest predictions on the test set
 preds <- predict(of_model, newdata = as.data.frame(vinho_verde_test_numeric))[[1]]
-# Recode predicted class indices to original quality levels
 preds_recoded <- factor(quality_levels[as.numeric(preds)], ordered = TRUE, levels = quality_levels)
-
-
-
 
 # ----------------------------------------------------------
 # Compute Feature Ranges for UI Inputs
@@ -161,11 +114,10 @@ feature_ranges <- vinho_verde_data %>%
         alcohol_min          = min(alcohol),
         alcohol_max          = max(alcohol)
     )
-print(feature_ranges)
 
-# -------------------------------
-# Define Global Column Order for Outputs
-# -------------------------------
+# ----------------------------------------------------------
+# Column Order Settings
+# ----------------------------------------------------------
 desired_order_history <- c("Timestamp", "Alcohol", "Density", "Volatile Acidity", 
                            "Chlorides", "Free Sulfur Dioxide", "Residual Sugar", 
                            "Total Sulfur Dioxide", "Citric Acid", "Sulphates", 
@@ -175,19 +127,3 @@ desired_order_filtered <- c("Alcohol", "Volatile Acidity", "Density",
                             "Chlorides", "Free Sulfur Dioxide", "Residual Sugar", 
                             "Total Sulfur Dioxide", "Citric Acid", "Sulphates", 
                             "Fixed Acidity", "pH", "Wine Colour", "Quality")
-
-
-# -------------------------------
-# Cache the Ranger Model Once at Startup
-# -------------------------------
-predictors_used <- c("fixed_acidity", "volatile_acidity", "citric_acid", "residual_sugar",
-                     "chlorides", "free_sulfur_dioxide", "total_sulfur_dioxide", "density",
-                     "pH", "sulphates", "alcohol", "Wine Colour")
-model_cache <- reactiveVal({
-    set.seed(123)
-    ranger(quality_num ~ fixed_acidity + volatile_acidity + citric_acid +
-               residual_sugar + chlorides + free_sulfur_dioxide +
-               total_sulfur_dioxide + density + pH + sulphates + alcohol + wine_colour,
-           data = vinho_verde_train_set, num.trees = 500, importance = "impurity")
-})
-

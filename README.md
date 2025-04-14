@@ -35,22 +35,29 @@ Together, these datasets are used to explore the relationship between chemical a
 
 ``` text
 ODAT5011_Project/
-├── app/                    # Shiny application files
-│   ├── app.R              # Launch script (shinyApp(ui, server))
-│   ├── global.R           # Global setup: data, models, variables
-│   ├── server.R           # Server logic
-│   ├── ui.R               # User interface layout
-│   └── app_data/          # ✅ Pre-cleaned RDS files for app deployment
-│       ├── vinho_verde_data.rds
-│       └── wine_reviews_portugal_clean.rds
-├── data/                  # ✅ Raw datasets (CSV) for reproducibility
-│   ├── winequality-red.csv
-│   ├── winequality-white.csv
-│   └── winemag.csv
-├── scripts/               # Quarto report and supporting R code
-│   └── ODAT5011_Wine_Report_Analysis.qmd
-├── README.md              # Project documentation and deployment info
-└── ODAT5011_Project.Rproj # RStudio project file
+├── app/                        # 🔹 Main Shiny application folder (deploy this folder)
+│   ├── app.R                  # Entry point: calls shinyApp(ui, server)
+│   ├── global.R               # Global setup: load data, models, constants
+│   ├── server.R               # Server logic: reactive expressions, outputs
+│   ├── ui.R                   # User interface layout: input controls, layout
+│   ├── app_data/              # ✅ Pre-cleaned and transformed datasets
+│   │   ├── vinho_verde_data.rds                # Cleaned Vinho Verde data
+│   │   └── wine_reviews_portugal_clean.rds     # Cleaned Portuguese reviews
+│   └── models/                # ✅ Pre-trained models (loaded at runtime)
+│       ├── rf_model.rds                         # Ranger regression model
+│       └── of_model.rds                         # Ordinal Forest model
+│
+├── data/                      # 📦 Raw unmodified datasets for provenance
+│   ├── winequality-red.csv                    # UCI red wine quality dataset
+│   ├── winequality-white.csv                  # UCI white wine quality dataset
+│   └── winemag.csv                            # Kaggle wine reviews
+│
+├── scripts/                   # 📑 Reports and offline processing scripts
+│   ├── ODAT5011_Wine_Report_Analysis.qmd      # Quarto report for academic submission
+│   └── train_models.R                         # 🔁 Offline model training script
+│
+├── README.md                  # 📘 Project overview and deployment instructions
+└── ODAT5011_Project.Rproj     # 🔧 RStudio project file (opens full environment)
 ```
 
 ------------------------------------------------------------------------
