@@ -119,7 +119,7 @@ function(input, output, session) {
                 title = "Log(Price USD) vs. Wine Review Score by Colour",
                 x = "Review Score",
                 y = "Log(Price USD)",
-                caption =      caption =  "Figure: Regression analysis showing the relationship between critic review \n     scores and the logarithm of wine prices.\nNote: Log scale reduces skew and highlights proportional differences."
+                caption =  "Figure: Regression analysis showing the relationship between critic review \n     scores and the logarithm of wine prices.\nNote: Log scale reduces skew and highlights proportional differences."
             ) +
             
             theme_minimal(base_size = 12) +  # reduce base text size
