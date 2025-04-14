@@ -25,6 +25,8 @@ fluidPage(
   theme = bs_theme(bootswatch = "flatly", base_font = font_google("Poppins")),
   
   tags$head(
+    tags$title("🍷 Wine Quality Prediction Dashboard"),
+    tags$link(rel = "icon", type = "image/png", href = "www/wine_favicon.png"),
     tags$style(HTML("
       html, body {
         height: 100%;
