@@ -234,8 +234,10 @@ function(input, output, session) {
         par(old_par)
     })
     
+    #Generate variable importance plot
+    
     output$varimp_plot <- renderPlot({
-        mod <- model_cache()
+        mod <- rf_model
         importance_vector <- mod$variable.importance
         varimp_df <- data.frame(Predictor = names(importance_vector),
                                 Importance = as.numeric(importance_vector),
@@ -497,7 +499,6 @@ function(input, output, session) {
     observeEvent(input$predict, {
         print("Predict button pressed.")
         tryCatch({
-            # Build a user data frame from inputs.
             user_data <- data.frame(
                 fixed_acidity = input$fixed_acidity_num,
                 volatile_acidity = input$volatile_acidity_num,
@@ -512,17 +513,12 @@ function(input, output, session) {
                 alcohol = input$alcohol_num,
                 wine_colour = factor(input$wine_colour, levels = c("Red", "White"))
             )
-            # Add a dummy "quality" column.
             user_data$quality <- NA
             
-            # Retrieve cached ranger model.
-            cached_model <- model_cache()
+            cached_model <- rf_model
             pred_numeric <- predict(cached_model, data = user_data)$predictions
             pred_numeric_2dec <- round(pred_numeric, 2)
             
-            print(paste("Ranger numeric prediction (2 decimals):", pred_numeric_2dec))
-            
-            # Display the prediction in the UI.
             output$result_box <- renderUI({
                 div(class = "result-box",
                     HTML(paste("🍇 <b>Predicted Wine Quality is </b> ", pred_numeric_2dec))
