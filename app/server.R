@@ -119,7 +119,7 @@ function(input, output, session) {
                 title = "Log(Price USD) vs. Wine Review Score by Colour",
                 x = "Review Score",
                 y = "Log(Price USD)",
-                caption =  "Figure: Regression analysis showing the relationship between critic review scores and the logarithm of wine prices."
+                caption =      caption =  "Figure: Regression analysis showing the relationship between critic review \n     scores and the logarithm of wine prices.\nNote: Log scale reduces skew and highlights proportional differences."
             ) +
             
             theme_minimal(base_size = 12) +  # reduce base text size
@@ -130,7 +130,8 @@ function(input, output, session) {
                 legend.title = element_text(size = 15),
                 legend.text = element_text(size = 13),
                 legend.background = element_rect(fill = "transparent", colour = NA),
-                legend.key = element_rect(fill = "transparent", colour = NA)
+                legend.key = element_rect(fill = "transparent", colour = NA),
+                plot.caption = element_text(size = 10, colour = "gray30", hjust = 0)
             )
     }, height = 800)
     
@@ -174,8 +175,11 @@ function(input, output, session) {
             scale_fill_manual(values = c("Red" = "darkred", "White" = "goldenrod")) +
             theme_minimal(base_size = 15) +
             theme(
-                plot.title = element_text(hjust = 0.5, face = "bold",size = 24),
-                axis.title = element_text(face = "bold"),
+                plot.title = element_text(hjust = 0.5, face = "bold"),  # Centre and bold title
+                axis.text = element_text(color = "black"),              # Black axis labels
+                axis.title = element_text(color = "black"),             # Black axis titles
+                legend.title = element_text(face = "bold"),             # Bold legend title
+                plot.caption = element_text(size = 10, colour = "gray30", hjust = 0),  # Styled caption
                 legend.position = "top"
             )
     })
@@ -194,8 +198,11 @@ function(input, output, session) {
             scale_fill_manual(values = c("Red" = "darkred", "White" = "goldenrod")) +
             theme_minimal(base_size = 15) +
             theme(
-                plot.title = element_text(hjust = 0.5, face = "bold", size = 24),
-                axis.title = element_text(face = "bold"),
+                plot.title = element_text(hjust = 0.5, face = "bold"),  # Centre and bold title
+                axis.text = element_text(color = "black"),              # Black axis labels
+                axis.title = element_text(color = "black"),             # Black axis titles
+                legend.title = element_text(face = "bold"),             # Bold legend title
+                plot.caption = element_text(size = 10, colour = "gray30", hjust = 0),  # Styled caption
                 legend.position = "top"
             )
     })  
@@ -249,12 +256,16 @@ function(input, output, session) {
             geom_col(fill = "steelblue") +
             coord_flip() +
             labs(title = "Variable Importance",
-                 x = "", y = "Importance") +
-            theme_minimal(base_size = 16) +
+                 x = "", y = "Importance",
+            caption = "Figure: Importance of variables in predicting wine quality"
+    ) +
+        theme_minimal(base=16) +  # Clean theme with readable font size
             theme(
-                axis.text = element_text(color = "black"),
-                axis.title = element_text(color = "black"),
-                plot.title = element_text(color = "black", hjust = 0.5)
+                plot.title = element_text(hjust = 0.5, face = "bold"),  # Centred and bolded title
+                axis.text = element_text(color = "black"),              # Axis label colour
+                axis.title = element_text(color = "black"),             # Axis title colour
+                legend.title = element_text(face = "bold"),             # Bold legend
+                plot.caption = element_text(size = 10, colour = "gray30", hjust = 0)  # Styled caption
             )
     })
     

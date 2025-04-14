@@ -86,10 +86,10 @@ fluidPage(
                               p("This application allows you to explore and predict wine quality using advanced models based on physicochemical attributes."),
                               p("Navigate through the tabs to:"),
                               tags$ul(
-                                tags$li("🔍 Examine distribution and relationships between wine attributes"),
-                                tags$li("📈 Predict wine quality using the Ranger model"),
-                                tags$li("📊 Review prediction history and filtered samples"),
                                 tags$li("🧠 Explore reviewer feedback and pricing trends"),
+                                tags$li("🔍 Examine distribution and relationships between wine attributes"),
+                                tags$li("📈 Predict wine quality using the predictive model"),
+                                tags$li("📊 Review prediction history and filtered samples"),
                                 tags$li("📚 Access data dictionaries for both datasets")
                               )
                        )
