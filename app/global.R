@@ -73,8 +73,8 @@ vinho_verde_train_set <- vinho_verde_data[vinho_verde_index, ]
 vinho_verde_test_set  <- vinho_verde_data[-vinho_verde_index, ]
 
 # Prepare numeric train/test sets
-vinho_verde_train_numeric <- vinho_verde_train_set %>% select(quality, fixed_acidity:alcohol)
-vinho_verde_test_numeric  <- vinho_verde_test_set  %>% select(quality, fixed_acidity:alcohol)
+vinho_verde_train_numeric <- dplyr::select(vinho_verde_train_set, quality, fixed_acidity:alcohol)
+vinho_verde_test_numeric  <- dplyr::select(vinho_verde_test_set, quality, fixed_acidity:alcohol)
 
 quality_levels <- levels(vinho_verde_data$quality)
 vinho_verde_train_numeric$quality <- factor(vinho_verde_train_numeric$quality, levels = quality_levels, ordered = TRUE)
