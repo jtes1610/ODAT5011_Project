@@ -366,7 +366,7 @@ fluidPage(
             )
           ),  # end tabsetPanel
           
-          div(id = "footer", "Created by James Tesoriero | University of Sydney")
+          div(id = "footer", "Created by 310247934 | University of Sydney")
       )  # end content-wrap
   )  # end page-container
 )
