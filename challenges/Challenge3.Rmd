@@ -1,0 +1,366 @@
+---
+title: "Challenge 3"
+author: "310247934"
+subtitle: "GED Event"
+date: "University of Sydney | ODAT5011 |11 March 2025"
+output:
+  html_document: 
+    fig_caption: yes
+    number_sections: no
+    self_contained: yes
+    theme: flatly
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: hide
+
+---
+
+
+```{r setup,include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) # Remove warning messages from R Markdown once knitted
+
+rm(list = ls())  # Remove all existing objects in the environment to avoid conflicts
+gc()  # Perform garbage collection to free up memory
+
+# Load essential libraries
+library(tidyverse)  # Core packages for data manipulation and visualization (includes dplyr, ggplot2, etc.)
+library(lubridate)  # Provides functions for date/time manipulation
+library(ggplot2)  # Visualization package
+library(sf)  # Spatial data analysis and visualization
+library(leaflet)  # Create interactive maps
+library(skimr)  # Provides comprehensive summary statistics
+library(rnaturalearth)  # Contains world country boundary data sets
+library(rnaturalearthdata)  # Supporting package for country boundary data
+library(janitor)  # Provides functions for cleaning and renaming column names
+library(readr) 
+library(patchwork)
+library(knitr)
+library(scales)
+
+
+# ----------------------------#
+# Read in the Data set
+# ----------------------------#
+GEDevent <- read_csv("path", show_col_types = FALSE)
+# Load data set from CSV file, assuming it is stored in the given path.
+
+
+
+
+```
+
+<div style="text-align: center;">
+## Question One & Two
+</div>
+
+*If you worked for a humanitarian agency, which high-fatality conflicts would you push for greater media coverage? Are certain regions or types of violence consistently overlooked?*
+
+*Do media organizations prioritize reporting on certain types of conflict over others? If you were a journalist investigating war coverage, would you find that state-based conflicts receive more attention than nonstate or civilian-targeted violence?*
+
+#### Initial Analysis
+
+Based on the provided code book (UCDP Georeferenced Event Dataset Codebook 
+Version 24.1) 
+
+number_of_sources is defined as "Number of total sources containing information for an event that were consulted. 
+ Note that this variable is only available for data collected since 
+2013 and for recently revised events". 
+As such to ensure that we use relevant source data we will only examine events from 2013. 
+
+We will also be definining the total number of deaths based on the definition of the best column "The best (most likely) estimate of total fatalities resulting from 
+an event. It is always the sum of deaths_a, deaths_b, deaths_civilians and 
+deaths_unknown".
+
+
+
+
+```{r}
+#rename type_of_violence from numbers to categories 
+GEDeventpost2013 <- GEDevent %>%
+  mutate(
+    type_of_violence = recode(
+      type_of_violence,
+      "1" = "state-based",
+      "2" = "non-state",
+      "3" = "one-sided violence"
+    ),
+    # Convert date columns to Date objects (adjust the format if necessary)
+    date_start = as.Date(date_start, format = "%Y-%m-%d"),
+    date_end = as.Date(date_end, format = "%Y-%m-%d"),
+    # Calculate the length of the conflict in days
+    length_of_conflict = as.numeric(date_end - date_start)
+  ) %>%
+  filter(year >= 2013) #filter out anything prior to 2013
+```
+
+From our initial investigation we will look at which type of violence type has the highest number of conflicts. We can see from the figure below that state-based conflicts have the highest number of conflicts. 
+
+```{r}
+
+frequency_of_conflict<-GEDeventpost2013%>%
+  group_by(type_of_violence)%>%
+  summarise(n=n()) %>%
+  arrange(desc(n))
+
+frequency_of_conflict %>%
+  ggplot(aes(x = reorder(type_of_violence, -n), y = n, fill = type_of_violence)) +
+  geom_col() +
+  labs(title = "Frequency of Conflict Types",
+       x = "Type of Violence",
+       y = "Count of Conflicts") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_y_continuous(limits = c(0, NA), labels = scales::comma) +
+  guides(fill = guide_legend(title = "Violence Type")) +
+  scale_fill_brewer(palette = "Set1")
+
+
+
+```
+
+Upon further investigation we can breakdown these conflict types to the conflict name and the number of deaths caused by these conflicts.
+
+
+```{r, fig.width=12, fig.height=8}
+
+#Find the top 20 conflicts
+top_20<-GEDeventpost2013%>%
+  group_by(conflict_name,type_of_violence)%>%
+  summarise(total_deaths=sum(best,na.rm=TRUE),
+            number_of_sources=sum(number_of_sources,na.rm=TRUE))%>%
+  arrange(desc(total_deaths))%>%
+  head(20)
+
+#From the top 20 conflicts create a column chart and fill using the type of violence
+top_20 %>%
+  ggplot(aes(x = reorder(conflict_name, -total_deaths), y = total_deaths, fill = type_of_violence)) +
+  geom_col() +
+  labs(title = "Frequency of Conflict Type",
+       x = "Type of Violence",
+       y = "Number of Deaths") +
+  scale_y_continuous(limits = c(0, NA), labels = scales::comma) +
+  scale_fill_brewer(palette = "Set1") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+The table below shows a summary of the top 5 conflicts from the chart above. This further enforces that state based conflicts not only have the highest number of conflicts but also have the highest total deaths. Further analysis can now be completed on the number of sources compared to the size of the conflict. 
+
+```{r, fig.width=12, fig.height=8}
+
+# create a table of the top 5 conflicts
+kable(top_20%>%
+        head(5), 
+      col.names = c("Conflict Name", "Type of Violence", "Total Deaths","Number of Sources"))
+
+```
+ 
+
+```{r}
+
+#Create a scatter plot to compare total deaths against total sources with a line of best fit
+
+ggplot(top_20, aes(x = number_of_sources, y = total_deaths, fill = type_of_violence)) +
+  geom_jitter(shape = 21, size = 3, color = "black", width = 0.2) +
+  geom_smooth(aes(group = 1), method = "lm", se = FALSE, color = "black", show.legend = FALSE) +
+  labs(title = "Deaths vs. Sources (Top 20 Events since 2013)",
+       x = "Number of Sources",
+       y = "Number of Deaths") +
+   theme_minimal() +
+  scale_y_continuous(labels = scales::comma) +
+  scale_x_continuous(labels = scales::comma) +
+  scale_fill_brewer(palette = "Set1")
+
+cor_coeff <- cor(top_20 $number_of_sources, top_20 $total_deaths, use = "complete.obs", method = "pearson")
+
+# Calculate quartiles and IQR for total_deaths
+Q1 <- quantile(top_20$total_deaths, 0.25, na.rm = TRUE)
+Q3 <- quantile(top_20$total_deaths, 0.75, na.rm = TRUE)
+IQR_value <- Q3 - Q1
+
+# Define lower and upper bounds
+lower_bound <- Q1 - 1.5 * IQR_value
+upper_bound <- Q3 + 1.5 * IQR_value
+
+# Filter out outliers from top_20 based on total_deaths
+top_20_no_outlier <- top_20 %>%
+  filter(total_deaths >= lower_bound & total_deaths <= upper_bound)
+
+# calculate the correlation coefficient without outliers
+cor_coeff2 <- cor(top_20_no_outlier $number_of_sources, top_20_no_outlier $total_deaths, use = "complete.obs", method = "pearson")
+
+
+```
+The above scatter plot compares the number of sources used against the number of deaths of the conflict type. Using the type of violence as the fill colour we are easily able to visualise if the bigger conflicts results in more sources. We can also see that in general there is a positive correlation of `r round(cor_coeff,2)` between the size of the conflict and the number of sources used. By removing any outlier conflicts we can see that this increased to  `r round(cor_coeff2,2)`.
+
+The Ethiopia: Government being the conflict with the highest death count interestingly does not have many sources with less than 1500 sources used. It would beg the question as to why such a large conflict did not receive much coverage. 
+
+We can also see from the scatter plot below that there does not appear to be any bias when reviewing the type of violence and the media coverage it receives. The number of sources is proportional to the number of conflicts within that type of violence.  
+
+
+```{r}
+# Create a new df to find the total number of conflicts and souruces by type of violence. 
+conflict_sources_summary <- GEDeventpost2013 %>%
+  group_by(type_of_violence) %>%
+  summarise(
+    n_conflicts = n(), 
+    total_sources = sum(number_of_sources, na.rm = TRUE)
+  ) %>%
+  arrange(desc(n_conflicts))
+
+# Create the scatter plot to visualise the above. 
+ggplot(conflict_sources_summary, aes(x = total_sources, y = n_conflicts, color = type_of_violence)) +
+    geom_smooth(aes(group = 1), method = "lm", se = FALSE, color = "black", show.legend = FALSE) +
+  geom_point(size = 4) +
+  labs(title = "Total Sources vs. Number of Conflicts by Type of Violence",
+       x = "Total Number of Sources",
+       y = "Number of Conflicts") +
+  scale_x_continuous(labels = scales::comma, limits = c(0, NA)) +
+  scale_y_continuous(labels = scales::comma, limits = c(0, NA)) +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1")
+```
+
+
+Moving on we will now look to see the countries with the highest conflicts and how many sources they receive. The table below provides a summary by country how many conflicts each country has and the average number of sources received per country based on its conflict volume.  
+
+```{r}
+# Aggregate by country, region, and conflict to get one row per unique conflict
+conflicts_by_country_region <- GEDeventpost2013 %>%
+  group_by(country, region, conflict_name) %>%
+  summarise(conflict_sources = sum(number_of_sources, na.rm = TRUE)) %>%
+  ungroup()
+
+# For each country and region, count the conflicts, sum the sources, and calculate the average
+country_region_summary <- conflicts_by_country_region %>%
+  group_by(country, region) %>%
+  summarise(
+    num_conflicts = n(),
+    total_sources = sum(conflict_sources),
+    avg_sources = total_sources / num_conflicts
+  ) %>%
+  ungroup()
+
+# Display the summarised table
+kable(country_region_summary, 
+      col.names = c("Country", "Region", "Number of Conflicts", "Total Sources", "Average Sources"))
+```
+
+To see what this table above looks like visually we will show the countries where the highest number of conflicts have occurred since 2013. The darker the colour on the map the more conflicts have occurred in that country. This is also interactive where hovering over any country will provide you how many conflicts and the average number of sources within that country. 
+
+
+
+```{r}
+# Load world spatial data (as an sf object)
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Join your conflict summary with the world spatial data
+# Here we assume that the 'country' column in your summary corresponds to the 'name' column in the spatial data
+world_conflict <- left_join(world, country_region_summary, by = c("name" = "country"))
+
+# Create a color palette based on the number of conflicts (num_conflicts)
+pal <- colorNumeric(palette = "YlOrRd", domain = world_conflict$num_conflicts, na.color = "transparent")
+
+# Create a Leaflet map
+leaflet(world_conflict) %>%
+  addTiles() %>%
+  addPolygons(
+    fillColor = ~pal(num_conflicts),
+    weight = 1,
+    opacity = 1,
+    color = "white",
+    dashArray = "3",
+    fillOpacity = 0.7,
+    highlight = highlightOptions(
+      weight = 2,
+      color = "#666",
+      dashArray = "",
+      fillOpacity = 0.7,
+      bringToFront = TRUE
+    ),
+    label = ~paste0(name, "<br/>Conflicts: ", num_conflicts, 
+                    "<br/>Avg Sources: ", round(avg_sources, 1))
+  ) %>%
+  addLegend(pal = pal, values = ~num_conflicts, opacity = 0.7, title = "Conflict Count",
+            position = "bottomright")
+
+```
+
+
+<div style="text-align: center;">
+## Question Three 
+</div>
+
+*Are prolonged conflicts always the deadliest, or do short, intense wars cause just as much devastation? If you were advising a peacekeeping mission, how would you assess which conflicts require the most urgent intervention?*
+
+The below graph illustrates the number of deaths against the duration of the conflict. From the graph we can see that there does not appear to be any type of relationship between the two. We can see that some very short conflicts have a very high death count and very long conflicts can have a low death count. 
+
+```{r}
+
+# Summarize the data by conflict_name
+conflict_summary_by_name <- GEDeventpost2013 %>%
+  group_by(conflict_name) %>%
+  summarise(
+    total_deaths = sum(best, na.rm = TRUE),
+    avg_length_conflict = mean(length_of_conflict, na.rm = TRUE)
+  )
+
+# Create the scatter plot:
+ggplot(conflict_summary_by_name, aes(x = avg_length_conflict, y = total_deaths)) +
+  geom_point(size = 4, color = "blue", alpha = 0.7) +
+  labs(title = "Conflict Duration vs. Total Deaths by Conflict",
+       x = "Average Duration of Conflict (days)",
+       y = "Total Number of Deaths") +
+  scale_x_continuous(limits = c(0, NA), labels = comma) +
+  scale_y_continuous(limits = c(0, NA), labels = comma) +
+  theme_minimal()
+
+
+
+```
+
+We will now visualise which countries have had the highest number of deaths on average from conflicts since 2013. From the below the countries which have the highest averages are in the darker colours. These countries would be ones that would most likely need resources to assist due the high fatality rate. 
+```{r}
+
+# Summarize total deaths per conflict per country
+conflict_deaths <- GEDeventpost2013 %>%
+  group_by(country, conflict_name) %>%
+  summarise(conflict_total_deaths = sum(best, na.rm = TRUE)) %>%
+  ungroup()
+
+# Compute the average conflict deaths per country
+avg_country_deaths <- conflict_deaths %>%
+  group_by(country) %>%
+  summarise(avg_conflict_deaths = mean(conflict_total_deaths, na.rm = TRUE)) %>%
+  ungroup()
+
+# Join the average deaths per country with the world data
+world_avg_deaths <- left_join(world, avg_country_deaths, by = c("name" = "country"))
+
+# Create a color palette for average conflict deaths
+pal <- colorNumeric(palette = "YlOrRd", domain = world_avg_deaths$avg_conflict_deaths, na.color = "transparent")
+
+# Create the Leaflet map
+leaflet(world_avg_deaths) %>%
+  addTiles() %>%
+  addPolygons(
+    fillColor = ~pal(avg_conflict_deaths),
+    weight = 1,
+    opacity = 1,
+    color = "white",
+    dashArray = "3",
+    fillOpacity = 0.7,
+    highlight = highlightOptions(
+      weight = 2,
+      color = "#666",
+      dashArray = "",
+      fillOpacity = 0.7,
+      bringToFront = TRUE
+    ),
+    label = ~paste0(name, "<br/>Avg Conflict Deaths: ", comma(avg_conflict_deaths))
+  ) %>%
+  addLegend(pal = pal, values = ~avg_conflict_deaths, opacity = 0.7,
+            title = "Avg Conflict Deaths", position = "bottomright")
+```
+

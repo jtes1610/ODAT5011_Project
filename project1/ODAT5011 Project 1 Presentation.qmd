@@ -1,0 +1,382 @@
+---
+title: "Analysis of South Australian Vehicle Registrations"
+author: "310247934"
+subtitle: "Presentation to IAG"
+editor: visual
+format:
+  revealjs:
+    center: false
+    margin: 0.01
+    smaller: true
+---
+
+```{r setup,include=FALSE}
+# Set knitr options to suppress warnings and messages.
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+# Clear the workspace and perform garbage collection to avoid conflicts.
+rm(list = ls())
+gc()
+
+# Load essential libraries.
+library(tidyverse)      # Core packages for data manipulation and visualization (includes dplyr, ggplot2, etc.).
+library(sf)             # Spatial data analysis and visualization.
+library(leaflet)        # Create interactive maps.
+library(skimr)          # Provides comprehensive summary statistics.
+library(matrixStats)    # Functions for computing weighted medians and other matrix statistics.
+library(scales)         # Tools to scale and format data in visualizations.
+library(RColorBrewer)   # Provides color palettes for graphics.
+library(gt)             # Creates attractive tables for output.
+library(knitr)          # Dynamic report generation with embedded R code.
+
+
+```
+
+```{r}
+# Load South Australian vehicle data.
+registered_vechicles <- read.csv(here("project1", "registered-vehicles-by-postcode-at-30-june-2023.csv"))
+
+# Load Australian postcode dataset (contains postcodes and their corresponding states).
+australian_postcodes <- read.csv(here("project1","australian_postcodes.csv"))
+
+# Load spatial postcode shape data (for mapping).
+postal_shapes <- read_sf(here("project1", "POA_2021_AUST_GDA2020_SHP", "POA_2021_AUST_GDA2020.shp"))
+
+```
+
+```{r}
+
+# Clean and prepare the registered vehicles dataset.
+registered_vechicles <- registered_vechicles %>%
+  # Remove columns that contain only NA values.
+  select(-where(~ all(is.na(.)))) %>%
+  # Filter out rows with NA in 'Owner PostCode' to retain only valid postcodes.
+  filter(!is.na(`Owner PostCode`)) %>%
+  # Rename the column 'Count of Vehicle ROIDs' to 'Number of Vehicles' for clarity.
+  rename(`Number of Vehicles` = `Count of Vehicle ROIDs`) %>%
+  # Convert 'Owner PostCode' to character to ensure consistency in joins.
+  mutate(`Owner PostCode` = as.character(`Owner PostCode`))
+
+# Extract unique postcodes for South Australia from the australian_postcodes dataset.
+australian_postcodes_sa <- australian_postcodes %>%
+  distinct(postcode, state) %>%
+  filter(state == "SA")
+
+# Join the postal shapes data with the South Australia postcodes.
+postal_shapes_SA <- postal_shapes %>%
+  inner_join(australian_postcodes_sa, by = c("POA_CODE21" = "postcode"))
+
+# Merge vehicle data with state information to create a South Australia (SA) dataset.
+vehicles_SA <- registered_vechicles %>%
+  inner_join(australian_postcodes_sa %>% distinct(postcode, state), 
+             by = c("Owner PostCode" = "postcode"))
+
+# Aggregate the total number of vehicles registered in SA.
+registered_vechicles_overall <- vehicles_SA %>%
+  summarise(total_vehicles = sum(`Number of Vehicles`, na.rm = TRUE), .groups = "drop")
+
+# Aggregate the number of vehicles registered per postcode.
+registered_vechicles_by_postcode <- vehicles_SA %>%
+  group_by(`Owner PostCode`) %>%
+  summarise(total_vehicles = sum(`Number of Vehicles`, na.rm = TRUE), .groups = "drop")
+
+# Identify the dominant vehicle make for each postcode.
+SA_dominant_vehicle_make <- vehicles_SA %>%
+  group_by(`Owner PostCode`, `Vehicle Make`) %>%
+  summarise(total_vehicles = sum(`Number of Vehicles`, na.rm = TRUE), .groups = "drop") %>%
+  arrange(`Owner PostCode`, desc(total_vehicles)) %>%
+  group_by(`Owner PostCode`) %>%
+  slice(1) %>%
+  ungroup() %>%
+  select(`Owner PostCode`, `Vehicle Make`) %>%
+  rename(`Most Common Vehicle` = `Vehicle Make`)
+
+# Calculate the weighted median vehicle year for each postcode.
+weighted_median_by_postcode <- vehicles_SA %>%
+  group_by(`Owner PostCode`) %>%
+  summarise(
+    weighted_median_year = round(weightedMedian(`Vehicle Year of Manufacture`, 
+                                                  w = `Number of Vehicles`, 
+                                                  na.rm = TRUE))
+  ) %>%
+  ungroup()
+
+
+
+```
+
+```{r}
+#Create Figures 1 and 2
+
+# Identify the top 10 vehicle makes by total count.
+top10_makes <- vehicles_SA %>%
+  group_by(`Vehicle Make`) %>%
+  summarise(total_vehicles = sum(`Number of Vehicles`, na.rm = TRUE)) %>%
+  arrange(desc(total_vehicles)) %>%
+  slice_head(n = 10) %>%
+  pull(`Vehicle Make`)
+
+# Aggregate counts for the top 10 makes by vehicle body type.
+# Recode body types ranked lower than 4 within each make as "Other".
+market_comp_top10_body <- vehicles_SA %>%
+  filter(`Vehicle Make` %in% top10_makes) %>%
+  group_by(`Vehicle Make`, `Vehicle Body Type`) %>%
+  summarise(total_vehicles = sum(`Number of Vehicles`, na.rm = TRUE), .groups = "drop") %>%
+  group_by(`Vehicle Make`) %>%
+  mutate(Body_Rank = rank(-total_vehicles, ties.method = "first"),
+         `Vehicle Body Type` = if_else(Body_Rank > 4, "Other", `Vehicle Body Type`)) %>%
+  group_by(`Vehicle Make`, `Vehicle Body Type`) %>%
+  summarise(total_vehicles = sum(total_vehicles), .groups = "drop") %>%
+  ungroup()
+
+# Order vehicle makes by overall totals and convert the make column to a factor.
+make_order <- market_comp_top10_body %>%
+  group_by(`Vehicle Make`) %>%
+  summarise(total_make = sum(total_vehicles)) %>%
+  arrange(desc(total_make)) %>%
+  pull(`Vehicle Make`)
+
+market_comp_top10_body <- market_comp_top10_body %>%
+  mutate(`Vehicle Make` = factor(`Vehicle Make`, levels = rev(make_order)))
+
+# Order vehicle body types by overall totals and convert to a factor.
+body_type_order <- market_comp_top10_body %>%
+  group_by(`Vehicle Body Type`) %>%
+  summarise(total_overall = sum(total_vehicles)) %>%
+  arrange(desc(total_overall)) %>%
+  pull(`Vehicle Body Type`)
+
+market_comp_top10_body <- market_comp_top10_body %>%
+  mutate(`Vehicle Body Type` = factor(`Vehicle Body Type`, levels = body_type_order))
+
+# Calculate the percentage of each body type within each make.
+market_comp_top10_body <- market_comp_top10_body %>%
+  group_by(`Vehicle Make`) %>%
+  mutate(prop = total_vehicles / sum(total_vehicles)) %>%
+  ungroup()
+
+# Create a horizontal stacked bar chart showing the actual counts.
+fig1 <- ggplot(market_comp_top10_body, aes(x = `Vehicle Make`, y = total_vehicles, fill = `Vehicle Body Type`)) + # Create base plot.
+  geom_bar(stat = "identity") + # Plot bars using actual counts.
+  coord_flip() + # Flip coordinates for horizontal display.
+  scale_y_continuous(labels = scales::comma) + # Format y-axis labels with commas.
+  theme_minimal() + # Use a minimal theme.
+  labs(
+    title = "Top 10 Vehicle Makes by Vehicle Body Type", # Set plot title.
+    x = "Vehicle Make", # Label x-axis.
+    y = "Total Number of Vehicles", # Label y-axis.
+    caption = "Figure 1 - Market Composition (Vehicle Count)" # Add caption.
+  )
+
+
+# Create a horizontal 100% stacked bar chart showing proportions.
+fig2 <- ggplot(market_comp_top10_body, aes(x = `Vehicle Make`, y = total_vehicles, fill = `Vehicle Body Type`)) + # Create base plot.
+  geom_bar(stat = "identity", position = "fill") + # Plot bars as proportions.
+  coord_flip() + # Flip coordinates for horizontal display.
+  scale_y_continuous(labels = percent_format()) + # Format y-axis labels as percentages.
+  theme_minimal() + # Use a minimal theme.
+  labs(
+    title = "Top 10 Vehicle Makes by Vehicle Body Type (100% Stacked)", # Set plot title.
+    x = "Vehicle Make", # Label x-axis.
+    y = "Proportion of Vehicles", # Label y-axis.
+    caption = "Figure 2 - Market Composition (100% Stacked)" # Add caption.
+  )
+```
+
+```{r}
+# Create Figure3
+
+# Identify the top 5 vehicle makes by the total number of vehicles.
+top5_makes <- vehicles_SA %>%
+  group_by(`Vehicle Make`) %>%
+  summarise(total = sum(`Number of Vehicles`, na.rm = TRUE)) %>%
+  arrange(desc(total)) %>%
+  slice_head(n = 5) %>%
+  pull(`Vehicle Make`)
+
+# Filter the dataset for the top 5 makes and for years after 1960.
+filtered_data <- vehicles_SA %>%
+  filter(`Vehicle Make` %in% top5_makes,
+         `Vehicle Year of Manufacture` > 1960) %>%
+  mutate(`Vehicle Make` = factor(`Vehicle Make`, levels = top5_makes))
+
+# Create a violin plot to show the distribution of manufacturing years for the top 5 vehicle makes.
+fig3<-ggplot(filtered_data, aes(x = `Vehicle Make`, y = `Vehicle Year of Manufacture`)) +
+  geom_violin(fill = "lightblue", alpha = 0.7) +
+  geom_boxplot(width = 0.1, fill = "white", outlier.shape = NA) +
+  theme_minimal() +
+  labs(
+    title = "Distribution of Vehicle Manufacturing Year for Top 5 Vehicle Makes",
+    x = "Vehicle Make",
+    y = "Vehicle Year of Manufacture",
+    caption = "Figure 3: Distribution of Vehicle Manufacturing Year"
+  )
+```
+
+```{r}
+# Create Figure4
+
+# Join aggregated total vehicles data with spatial data using the postal code.
+vehicles_by_postcode_sf <- postal_shapes_SA %>%
+  inner_join(registered_vechicles_by_postcode, by = c("POA_CODE21" = "Owner PostCode"))
+
+# Create a numeric color palette for total vehicles using a reversed "RdYlGn" scheme.
+pal_total <- colorNumeric(
+  palette = rev(brewer.pal(n = 9, name = "RdYlGn")),
+  domain = vehicles_by_postcode_sf$total_vehicles
+)
+
+# Join data frames to create an aggregated dataset.
+aggregated_data <- registered_vechicles_by_postcode %>%
+  inner_join(SA_dominant_vehicle_make, by = "Owner PostCode") %>%
+  inner_join(weighted_median_by_postcode, by = "Owner PostCode") %>%
+  rename(MostCommonVehicle = `Most Common Vehicle`)
+
+# Convert MostCommonVehicle to a factor.
+aggregated_data <- aggregated_data %>%
+  mutate(MostCommonVehicle = as.factor(MostCommonVehicle))
+
+# Compute risk scores based on total vehicles and weighted median vehicle year.
+risk_data <- aggregated_data %>%
+  mutate(
+    z_total_vehicles = (total_vehicles - mean(total_vehicles, na.rm = TRUE)) / sd(total_vehicles, na.rm = TRUE),
+    z_median_year = (weighted_median_year - mean(weighted_median_year, na.rm = TRUE)) / sd(weighted_median_year, na.rm = TRUE),
+    risk_score = z_total_vehicles - z_median_year,  # Original risk score.
+    risk_score_adj = risk_score - min(risk_score, na.rm = TRUE)  # Adjusted so that minimum is zero.
+  )
+
+# Create a table of the top 10 riskiest postcodes using the adjusted risk score.
+top_10_risk_postcodes <- risk_data %>%
+  arrange(desc(risk_score_adj)) %>%
+  head(10) %>%
+  select(`Owner PostCode`, total_vehicles, weighted_median_year, risk_score_adj) %>%
+  rename(`Postcode` = `Owner PostCode`,
+         `Total Vehicles Registered` = total_vehicles,
+         `Median Vehicle Year` = weighted_median_year,
+         `Risk Score` = risk_score_adj)
+
+# Plot the risk profile using ggplot2 with a gradient color scale.
+fig4<-ggplot(risk_data, aes(x = weighted_median_year, y = total_vehicles, color = risk_score_adj)) +
+  geom_point(size = 3) +
+  scale_color_gradient(low = "green", high = "red") +
+  theme_minimal() +
+  labs(title = "Risk Profile of Postcodes",
+       x = "Median Vehicle Year",
+       y = "Total Vehicles",
+       color = "Risk Score",
+       caption = "Figure 4: Risk Profile of Postcodes")
+```
+
+```{r}
+# Create Figure4
+
+# Join risk data with spatial data using the postal code.
+risk_data_sf <- postal_shapes_SA %>%
+  inner_join(risk_data, by = c("POA_CODE21" = "Owner PostCode"))
+
+# Create a numeric color palette for the adjusted risk score.
+pal_risk <- colorNumeric(
+  palette = c("green", "red"),
+  domain = risk_data_sf$risk_score_adj
+)
+
+# Build the Leaflet map with polygons colored by risk score.
+fig5<-leaflet(risk_data_sf) %>%
+  addProviderTiles("CartoDB.Positron") %>%  # Use a light-themed base map.
+  addPolygons(
+    fillColor = ~pal_risk(risk_score_adj),   # Fill color based on risk score.
+    color = "white",                         # White borders.
+    weight = 1,                              # Border thickness.
+    fillOpacity = 0.7,                       # Fill transparency.
+    popup = ~paste0("<strong>Postal Code:</strong> ", POA_CODE21,
+                    "<br><strong>Risk Score:</strong> ", round(risk_score_adj, 2))
+  ) %>%
+  addLegend(
+    position = "bottomright",  # Place the legend in the bottom right.
+    pal = pal_risk,            # Use the defined risk color palette.
+    values = ~risk_score_adj,  # Link the legend to risk scores.
+    title = "Risk Score",      # Legend title.
+    opacity = 1                # Fully opaque legend.
+  ) %>%
+  addControl(
+    html = "<strong>Figure 5:</strong> Map of Risk Profile by Postal Code",
+    position = "bottomleft",
+    className = "leaflet-control-caption"
+  )
+```
+
+## Purpose of the Presentation
+
+-   **Present comprehensive vehicle registration insights** to inform risk assessment and premium pricing.
+-   **Highlight key market trends and geographic patterns** that drive targeted risk management.
+-   **Showcase detailed market segmentation and vehicle age profiles** for precise underwriting.
+-   **Support IAG's strategic focus on innovation** with actionable, analytics-based decision-making.
+
+## Data and Limitations
+
+-   Based on a robust, quality-controlled dataset of South Australian vehicle registrations as of June 2023, ensuring data integrity by removing incomplete records and standardising key identifiers.
+-   Focused exclusively on South Australian postcodes, thereby limiting the analysis to IAG brands offered within South Australia.
+-   Limited to key data attributes: Owner Postcode, Vehicle Make, Vehicle Body Type, Vehicle Year of Manufacture, and Number of Vehicles, without further breakdown to models or EV classification.
+
+## Market Composition
+
+-   Detailed analysis of leading vehicle brands and their body-type composition in South Australia.
+-   Actionable insights for IAG to refine underwriting and premium pricing based on brand popularity, repair cost variability, and safety ratings.
+
+::::: columns
+::: column
+```{r}
+fig1
+
+```
+:::
+
+::: column
+```{r}
+# Display the second plot
+fig2
+```
+:::
+:::::
+
+## Top 5 Vehicle Makes and Age
+
+-   Illustrates the distribution of manufacturing years among the top five vehicle makes.
+-   Compares older and newer vehicles to reveal risk implications for underwriting, claims management, and repair costs.
+
+```{r}
+fig3
+```
+
+## Risk Analysis
+
+-   Consolidates insights by combining total registered vehicle volumes and median manufacturing year per postcode into a single risk score.
+-   The score, computed by standardising these factors, highlights postcodes with potentially higher accident and claim risks.
+
+::::: columns
+::: column
+```{r}
+fig4
+```
+:::
+
+::: column
+```{r}
+fig5
+```
+:::
+:::::
+
+## Recommendations
+
+-   **Refine Premium Pricing:**\
+    Integrate the risk score, vehicle age, and repair cost variability into pricing models to ensure that higher-risk postcodes, older vehicles, and expensive repairs are accurately priced.
+
+-   **Enhance Underwriting Criteria:**\
+    Develop targeted underwriting policies based on postcode-level insights, focusing on regions with elevated accident potential, a high proportion of older vehicles, and increased repair costs.
+
+-   **Focus on Risk Mitigation:**\
+    Collaborate with local communities and authorities in higher-risk areas to support road safety initiatives, aiming to reduce accident frequency and mitigate costly repairs over time.
+
+-   **Leverage Additional Data:**\
+    Incorporate safety ratings, historical claims, and repair cost data into ongoing analyses to further refine predictive risk models and remain agile in a dynamic market.

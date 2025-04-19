@@ -1,0 +1,223 @@
+---
+title: "Challenge 5"
+author: "310247934"
+subtitle: "GAPMINDER"
+date: "University of Sydney | ODAT5011 |6 April 2025"
+output:
+  html_document: 
+    fig_caption: yes
+    number_sections: no
+    self_contained: yes
+    theme: flatly
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: hide
+
+---
+
+
+```{r setup,include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) # Remove warning messages from R Markdown once knitted
+
+rm(list = ls())  # Remove all existing objects in the environment to avoid conflicts
+gc()  # Perform garbage collection to free up memory
+
+# Load essential libraries
+library(tidyverse)  # Core packages for data manipulation and visualization (includes dplyr, ggplot2, etc.)
+library(lubridate)  # Provides functions for date/time manipulation
+library(ggplot2)  # Visualization package
+library(sf)  # Spatial data analysis and visualization
+library(leaflet)  # Create interactive maps
+library(skimr)  # Provides comprehensive summary statistics
+library(rnaturalearth)  # Contains world country boundary data sets
+library(rnaturalearthdata)  # Supporting package for country boundary data
+library(janitor)  # Provides functions for cleaning and renaming column names
+library(readr) 
+library(patchwork)
+library(knitr)
+library(scales)
+library(ggrepel)
+library(gridExtra)
+library(gapminder)
+library(broom)
+library(gt)
+
+
+```
+
+
+
+
+
+<div style="text-align: center;">
+## Question One 
+</div>
+
+*Reflect on the long-term impact of globalization and technological innovation. By examining changes in GDP per capita for the same countries between 1952 and 2007, you can assess whether economies have truly grown. To do this, pick two countries from each region (one excelling and one lagging) and provide an analysis of how each of the GDP per capita has changed over time. Are there insights into things that can explain your findings?*
+
+#### Analysis
+
+First let's select the countries from each continent based on which has the highest and lowest GDP per capita in 2007. This has been summarised in Table 1.
+
+```{r}
+
+# Define the year to select performance from
+selected_year=2007
+
+# For each continent, select the country with the highest GDP per capita (excelling)
+excelling <- gapminder %>%
+  filter(year == selected_year) %>%
+  group_by(continent) %>%
+  slice_max(order_by = gdpPercap, n = 1) %>%
+  mutate(GDP_Performance = "excelling")
+
+# For each continent, select the country with the lowest GDP per capita (underperforming)
+underperforming <- gapminder %>%
+  filter(year == selected_year) %>%
+  group_by(continent) %>%
+  slice_min(order_by = gdpPercap, n = 1) %>%
+  mutate(GDP_Performance = "underperforming")
+
+
+# Combine the selected countries
+selected_countries <- bind_rows(excelling, underperforming)%>%
+  arrange(continent)
+
+country_table<-selected_countries%>%
+  rename(Country = country,
+         Continent = continent,
+         Year=year,
+         `Life Expectancy`=lifeExp,
+         Population=pop,
+         `GDP per capita`=gdpPercap,
+         `GDP Performance`=GDP_Performance)
+
+# Create table of selected countries
+country_table %>%
+  gt() %>%
+  tab_header(
+    title = "Table 1: Excelling and Underperforming countries by continent"
+  )
+
+
+
+```
+ Using the faceted line plots below we are able to see from 1952 to 2007 the yearly GDP per Capita for each of the preselected countries. 
+
+```{r}
+# Drop contintent to avoid duplication in join
+selected_countries <- selected_countries %>%
+  ungroup() %>%
+  select(-continent)
+
+# Filter the gapminder data to include only the selected countries
+gapminder_selected <- gapminder %>%
+  filter(country %in% selected_countries$country)
+
+#Join selected countries to get GDP Performance category
+gapminder_selected <- gapminder_selected %>%
+  left_join(selected_countries %>% select(country, GDP_Performance), by = "country")
+
+# Plot using the country column for coloring
+ggplot(gapminder_selected, aes(x = year, y = gdpPercap, color = country)) +
+  geom_line() +
+  facet_wrap(~ continent, scales = "free_y") +
+  scale_x_continuous(breaks = seq(1952, 2007, by = 20)) +
+  labs(
+    title = "GDP per Capita Trends (1952 - 2007)",
+    x = "Year",
+    y = "GDP per Capita"
+  ) +
+  theme_minimal()
+
+```
+
+
+
+Now fitting a linear regression model to these countries we can see whether the general trend of these is increasing over time and the level confidence demonstrated by the grey banding. 
+
+
+```{r}
+# Fit a linear regression model (GDP per capita ~ year) for each selected country
+models_by_country <- gapminder_selected %>%
+  group_by(country, GDP_Performance) %>%
+  do(model = lm(gdpPercap ~ year, data = .))
+
+# Extract summary statistics for the slope (year coefficient) 
+slope_summary <- models_by_country %>%
+  mutate(tidy_model = list(tidy(model))) %>%
+  unnest(tidy_model) %>%
+  filter(term == "year") %>%    # Select only the slope coefficient
+  select(country, GDP_Performance, estimate, std.error, statistic, p.value)
+
+# View the hypothesis test results for the slope in each country
+#print(slope_summary)
+
+
+
+
+```
+```{r}
+# Ensure GDP_Performance is a factor with levels in the desired order
+gapminder_selected <- gapminder_selected %>%
+  mutate(GDP_Performance = factor(GDP_Performance, levels = c("underperforming", "excelling")))
+
+# For each continent, reorder countries based on GDP_Performance
+continents <- unique(gapminder_selected$continent)
+
+
+# List to store plots
+plot_list <- list()
+
+# Loop through each continent
+for (cont in continents) {
+  continent_data <- gapminder_selected %>%
+    filter(continent == cont) %>%
+    arrange(GDP_Performance) %>%
+    mutate(country = factor(country, levels = unique(country)))
+
+  p <- ggplot(continent_data, aes(x = year, y = gdpPercap, color = GDP_Performance)) +
+    geom_point(alpha = 0.5) +
+    geom_smooth(method = "lm", se = TRUE) +
+    facet_wrap(~ country, scales = "free_y") +
+    scale_x_continuous(breaks = seq(1952, 2007, by = 20)) +
+    scale_y_continuous(labels = comma) +
+    labs(
+      title = paste("GDP per Capita Trends in", cont),
+      x = "Year",
+      y = "GDP per Capita"
+    ) +
+    theme_minimal()
+
+  # Store plot in list
+  plot_list[[cont]] <- p
+
+
+}
+```
+
+## General Commentary 
+
+We can see for countries excelling such as Australia, United States and Norway the regression line is clearly increasing and a narrow banding indicating that we are more confident that about this trend. 
+
+Except for Oceania in general the underperforming countries tend to have a wider band leading to a lower confidence in the trend. We can also see that in Africa and Americas their underperforming countries are decreasing over time. 
+
+Interesting which is also varified in our faceted line plot above Kuwait which is excelling is over time decreasing. However, is still showing a GDP per Capita far higher than its underperforming counter part Myanmar.
+
+
+```{r}
+#Generate plots for each region 
+
+plot_list[["Africa"]]
+plot_list[["Americas"]]
+plot_list[["Asia"]]
+plot_list[["Europe"]]
+plot_list[["Oceania"]]
+```
+
+
+
+
+
+

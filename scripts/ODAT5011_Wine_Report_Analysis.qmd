@@ -1,6 +1,6 @@
 ---
 title: "Wine Quality Analysis: Identifying Key Quality Predictors"
-author: "James Tesoriero"
+author: "310247934"
 subtitle: "University of Sydney ODAT5011 Project 2"
 date: "13 April 2025"
 format:

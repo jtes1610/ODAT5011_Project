@@ -1,0 +1,133 @@
+---
+title: "Wine Quality Project – Data Preparation for Shiny App"
+author: "310247934"
+date: "April 2025"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    number-sections: true
+    theme: flatly
+---
+
+# 🗃️ Overview
+
+This document outlines all the steps used to clean, filter, and save datasets required by the `Wine_Analysis_Predictability_app`. By exporting cleaned datasets into `.rds` format, we ensure fast and consistent loading into the Shiny dashboard without rerunning time-intensive preprocessing on every launch.
+
+# 📥 Step 1: Load Raw Datasets
+
+``` r
+# Load required libraries
+library(tidyverse)
+library(readr)
+
+# Load original datasets from the 'data/' folder
+wine_red <- read_csv("data/winequality-red.csv", show_col_types = FALSE)
+wine_white <- read_csv("data/winequality-white.csv", show_col_types = FALSE)
+winemag <- read_csv("data/winemag.csv", show_col_types = FALSE)
+```
+
+# 🍷 Step 2: Combine Red and White Wines
+
+``` r
+# Add wine_colour column before combining
+wine_red <- wine_red %>%
+  mutate(wine_colour = "Red")
+
+wine_white <- wine_white %>%
+  mutate(wine_colour = "White")
+
+# Combine into a single dataset
+wine_all <- bind_rows(wine_red, wine_white) %>%
+  mutate(quality = as.ordered(quality))  # Ordinal factor
+```
+
+# 🧼 Step 3: Filter and Clean WineMag Data (Portugal Only)
+
+``` r
+# ----------------------------------------------------------
+# Provide logic for wine variety colours and Filter for Portugal
+# ----------------------------------------------------------
+
+# Define red and white varieties
+red_varieties <- c(
+  "Cabernet Sauvignon", "Merlot", "Pinot Noir", "Syrah", "Malbec", "Tempranillo", 
+  "Sangiovese", "Zinfandel", "Grenache", "Mourvèdre", "Touriga Nacional", "Baga", 
+  "Aragonez", "Tinta Roriz", "Touriga Franca", "Bobal", "Alfrocheiro", "Vinhão", 
+  "Argaman", "Graciano", "Garnacha Tintorera", "Tinta Amarela", "Alicante Bouschet", 
+  "Aragonês", "Baga-Touriga Nacional", "Bastardo", "Bordeaux-style Red Blend", 
+  "Cabernet Sauvignon and Tinta Roriz", "Cabernet Sauvignon-Syrah", "Castelão", 
+  "Espadeiro", "Jaen", "Madeira Blend", "Merlot-Syrah", "Moscatel Roxo", "Petit Verdot", 
+  "Petite Verdot", "Port", "Portuguese Red", "Portuguese Rosé", "Red Blend", 
+  "Rhône-style Red Blend", "Rosé", "Shiraz", "Sousão", "Tinta Barroca", "Tinta Francisca", 
+  "Tinta Negra Mole", "Touriga Nacional Blend", "Touriga Nacional-Cabernet Sauvignon", 
+  "Trincadeira"
+)
+white_varieties <- c(
+  "Chardonnay", "Sauvignon Blanc", "Riesling", "Pinot Grigio", "Viognier", "Gewürztraminer", 
+  "Alvarinho", "Encruzado", "Arinto", "Antão Vaz", "Loureiro", "Fernão Pires", "Albana", 
+  "Alvarinho-Chardonnay", "Avesso", "Azal", "Bical", "Bual", "Côdega do Larinho", "Cerceal", 
+  "Chenin Blanc", "Gewürztraminer-Riesling", "Gouveio", "Malmsey", "Malvasia", 
+  "Malvasia Fina", "Moscatel", "Moscatel Graúdo", "Muscat", "Pinot Blanc", 
+  "Portuguese Sparkling", "Portuguese White", "Rabigato", "Sémillon", "Sercial", "Siria", 
+  "Sparkling Blend", "Verdelho", "White Blend", "White Port", "Códega do Larinho"
+)
+
+
+
+# Filter for Portuguese wines and classify colour based on variety
+wine_reviews_portugal_clean <- wine_reviews %>% 
+  filter(country == "Portugal") %>%
+  mutate(wine_colour = case_when(
+    variety %in% red_varieties ~ "Red",
+    variety %in% white_varieties ~ "White",
+    TRUE ~ "Unknown"
+  )) %>%
+  rename(score = points, price_USD = price) %>%
+  dplyr::select(country, variety, wine_colour, score, price_USD, description) %>%
+  filter(!is.na(score), !is.na(price_USD))
+```
+
+# 🔮 Step 4: Create Training and Test Sets for Modelling
+
+``` r
+set.seed(1234)
+
+# Split wine_all into 80/20 train/test
+sample_indices <- sample(nrow(wine_all), size = 0.8 * nrow(wine_all))
+
+vinho_verde_train_set <- wine_all[sample_indices, ]
+vinho_verde_test_set <- wine_all[-sample_indices, ]
+```
+
+# 💾 Step 5: Save Cleaned Data to `.rds` Files
+
+``` r
+# Save all necessary datasets to 'data/' folder
+saveRDS(wine_all, file = "data/wine_all.rds")
+saveRDS(wine_reviews_portugal_clean, file = "data/wine_reviews_portugal_clean.rds")
+saveRDS(vinho_verde_train_set, file = "data/vinho_verde_train_set.rds")
+saveRDS(vinho_verde_test_set, file = "data/vinho_verde_test_set.rds")
+```
+
+# 🧪 Optional: Verify File Save
+
+``` r
+# Optional checks to verify that data can be read
+file.exists("data/wine_all.rds")
+file.exists("data/wine_reviews_portugal_clean.rds")
+file.exists("data/vinho_verde_train_set.rds")
+file.exists("data/vinho_verde_test_set.rds")
+```
+
+# 📦 Summary
+
+| Dataset | Description | File Location |
+|-------------------|------------------------------|------------------------|
+| `wine_all` | Combined red and white wine quality dataset | `data/wine_all.rds` |
+| `wine_reviews_portugal_clean` | Filtered high-quality Portugal wine reviews | `data/wine_reviews_portugal_clean.rds` |
+| `vinho_verde_train_set` | Training set for modelling | `data/vinho_verde_train_set.rds` |
+| `vinho_verde_test_set` | Test set for evaluation | `data/vinho_verde_test_set.rds` |
+
+This process allows for consistent and fast integration into the Shiny dashboard, improving both performance and maintainability.

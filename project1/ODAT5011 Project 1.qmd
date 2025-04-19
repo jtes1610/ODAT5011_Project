@@ -1,0 +1,611 @@
+---
+title: "Analysis of South Australian Vehicle Registrations"
+author: "310247934"
+subtitle: "University of Sydney ODAT5011 Project 1"
+date: "23 March 2025"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    toc-floating: true
+    code-fold: true         # Code blocks are folded by default.
+    number-sections: false
+    self-contained: true
+    theme: flatly
+    css: 
+      - https://use.fontawesome.com/releases/v5.0.6/css/all.css
+---
+
+## Summary of Insurance Australia Group
+
+**Insurance Australia Group (IAG)** is one of Australia’s leading insurers, recognised for its robust risk management framework and its innovative approach to underwriting and claims management. IAG’s broad portfolio spans both retail and commercial insurance, and the company actively leverages advanced analytics to drive strategic decision-making and maintain a competitive edge.
+
+#### Why Present to IAG:
+
+-   **Industry Leadership:**\
+    IAG’s established reputation and market influence make it an ideal candidate for integrating data-driven insights into risk assessment and premium pricing strategies.
+
+-   **Commitment to Innovation:**\
+    Continuous investments in advanced analytics enable IAG to adopt cutting-edge methods such as spatial mapping, market segmentation, and risk profiling which are critical for precise underwriting.
+
+-   **Strategic Focus:**\
+    The analysis, covering vehicle registrations, market trends, and geographic risk profiles, aligns with IAG’s focus on targeted risk management and accurate premium determination.
+
+-   **Enhanced Customer Outcomes:**\
+    Leveraging these insights allows IAG to tailor premium structures and improve service delivery, ultimately leading to better outcomes for its policyholders.
+
+This presentation is designed to provide IAG with actionable, reliable insights that support strategic decision-making and reinforce its leadership in the insurance industry. (Insurance Australia Group, 2025)
+
+## Executive Summary
+
+This report presents a comprehensive analysis of South Australian vehicle registrations as of 2023, offering actionable insights tailored for IAG. By leveraging interactive maps, detailed visualizations, and aggregated statistics, the analysis highlights trends that are critical for effective risk assessment and premium pricing strategies.
+
+**Areas of Focus:**
+
+-   **Geographic Distribution:**\
+    Interactive maps reveal areas with high registration volumes and identify the dominant vehicle types by postcode, supporting regional risk evaluation.
+
+-   **Market Composition:**\
+    The breakdown of the top 10 vehicle makes by body type uncovers market segmentation and prevalent vehicle categories, providing a basis for adjusting premium structures.
+
+-   **Vehicle Age Analysis:**\
+    Distribution plots of manufacturing years shed light on the age profile of registered vehicles, a key factor in determining risk and maintenance costs.
+
+-   **Risk Profiling:**\
+    A composite risk score, integrating total vehicle counts and age data, identifies higher-risk areas. This insight enables more nuanced underwriting and risk management decisions.
+
+Overall, the insights from this analysis empower IAG to refine its risk assessment processes and optimize premium pricing based on localised vehicle registration trends and demographics.
+
+## Summary of Data
+
+This report is based on a robust dataset of South Australian vehicle registrations as of June 2023. We ensured data integrity through rigorous quality controls by eliminating incomplete records and standardising key identifiers so that our analysis focuses exclusively on South Australian postcodes. This analysis would therefore be limited to your IAG brands offered within South Australia. 
+
+**Data Attributes:**
+
+-   **Owner Postcode:** Geographic area where vehicles are registered.
+-   **Vehicle Make:** Manufacturer or brand of the vehicle.
+-   **Vehicle Body Type:** Classification of the vehicle's design and structure.
+-   **Vehicle Year of Manufacture:** Indicates the age profile of the vehicle fleet.
+-   **Number of Vehicles:** Volume of registrations for each unique combination of the above attributes.
+
+We have been limited only by the attributes above and could not breakdown the vehicle makes any further to the models or whether they are EV vehicles. 
+
+This refined dataset underpins our spatial mapping, market segmentation, and risk profiling, ensuring that the insights presented are both reliable and actionable for strategic decision-making.
+
+```{r setup,include=FALSE}
+# Set knitr options to suppress warnings and messages.
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+# Clear the workspace and perform garbage collection to avoid conflicts.
+rm(list = ls())
+gc()
+
+# Load essential libraries.
+library(tidyverse)      # Core packages for data manipulation and visualization (includes dplyr, ggplot2, etc.).
+library(sf)             # Spatial data analysis and visualization.
+library(leaflet)        # Create interactive maps.
+library(skimr)          # Provides comprehensive summary statistics.
+library(matrixStats)    # Functions for computing weighted medians and other matrix statistics.
+library(scales)         # Tools to scale and format data in visualizations.
+library(RColorBrewer)   # Provides color palettes for graphics.
+library(gt)             # Creates attractive tables for output.
+library(knitr)          # Dynamic report generation with embedded R code.
+library(readr)
+library(here)
+
+
+```
+
+```{r}
+# Load South Australian vehicle data.
+registered_vechicles <- read.csv(here("project1", "registered-vehicles-by-postcode-at-30-june-2023.csv"))
+
+# Load Australian postcode dataset (contains postcodes and their corresponding states).
+australian_postcodes <- read.csv(here("project1","australian_postcodes.csv"))
+
+# Load spatial postcode shape data (for mapping).
+postal_shapes <- read_sf(here("project1", "POA_2021_AUST_GDA2020_SHP", "POA_2021_AUST_GDA2020.shp"))
+
+```
+
+```{r}
+
+# Clean and prepare the registered vehicles dataset.
+registered_vechicles <- registered_vechicles %>%
+  # Remove columns that contain only NA values.
+  select(-where(~ all(is.na(.)))) %>%
+  # Filter out rows with NA in 'Owner PostCode' to retain only valid postcodes.
+  filter(!is.na(`Owner PostCode`)) %>%
+  # Rename the column 'Count of Vehicle ROIDs' to 'Number of Vehicles' for clarity.
+  rename(`Number of Vehicles` = `Count of Vehicle ROIDs`) %>%
+  # Convert 'Owner PostCode' to character to ensure consistency in joins.
+  mutate(`Owner PostCode` = as.character(`Owner PostCode`))
+
+# Extract unique postcodes for South Australia from the australian_postcodes dataset.
+australian_postcodes_sa <- australian_postcodes %>%
+  distinct(postcode, state) %>%
+  filter(state == "SA")
+
+# Join the postal shapes data with the South Australia postcodes.
+postal_shapes_SA <- postal_shapes %>%
+  inner_join(australian_postcodes_sa, by = c("POA_CODE21" = "postcode"))
+
+# Merge vehicle data with state information to create a South Australia (SA) dataset.
+vehicles_SA <- registered_vechicles %>%
+  inner_join(australian_postcodes_sa %>% distinct(postcode, state), 
+             by = c("Owner PostCode" = "postcode"))
+
+# Aggregate the total number of vehicles registered in SA.
+registered_vechicles_overall <- vehicles_SA %>%
+  summarise(total_vehicles = sum(`Number of Vehicles`, na.rm = TRUE), .groups = "drop")
+
+# Aggregate the number of vehicles registered per postcode.
+registered_vechicles_by_postcode <- vehicles_SA %>%
+  group_by(`Owner PostCode`) %>%
+  summarise(total_vehicles = sum(`Number of Vehicles`, na.rm = TRUE), .groups = "drop")
+
+# Identify the dominant vehicle make for each postcode.
+SA_dominant_vehicle_make <- vehicles_SA %>%
+  group_by(`Owner PostCode`, `Vehicle Make`) %>%
+  summarise(total_vehicles = sum(`Number of Vehicles`, na.rm = TRUE), .groups = "drop") %>%
+  arrange(`Owner PostCode`, desc(total_vehicles)) %>%
+  group_by(`Owner PostCode`) %>%
+  slice(1) %>%
+  ungroup() %>%
+  select(`Owner PostCode`, `Vehicle Make`) %>%
+  rename(`Most Common Vehicle` = `Vehicle Make`)
+
+# Calculate the weighted median vehicle year for each postcode.
+weighted_median_by_postcode <- vehicles_SA %>%
+  group_by(`Owner PostCode`) %>%
+  summarise(
+    weighted_median_year = round(weightedMedian(`Vehicle Year of Manufacture`, 
+                                                  w = `Number of Vehicles`, 
+                                                  na.rm = TRUE))
+  ) %>%
+  ungroup()
+
+
+
+```
+
+## Analysis on Top Vehicle Make
+
+This section provides a detailed view of the leading vehicle brands in South Australia and their body-type composition. It highlights market leaders and the distribution of vehicle types, offering IAG actionable insights to refine underwriting and premium pricing strategies based on brand popularity, repair cost variability, and safety ratings.
+
+### Key Findings
+
+-   **Market Dominance & Predictability:**\
+    Figure 1 illustrates that Toyota leads in overall registration numbers, suggesting a stable market presence with predictable repair cost dynamics. This dominance can facilitate more consistent claims patterns and potentially lower repair costs (Insurance Council of Australia, 2025).
+
+```{r}
+
+# Identify the top 10 vehicle makes by total count.
+top10_makes <- vehicles_SA %>%
+  group_by(`Vehicle Make`) %>%
+  summarise(total_vehicles = sum(`Number of Vehicles`, na.rm = TRUE)) %>%
+  arrange(desc(total_vehicles)) %>%
+  slice_head(n = 10) %>%
+  pull(`Vehicle Make`)
+
+# Aggregate counts for the top 10 makes by vehicle body type.
+# Recode body types ranked lower than 4 within each make as "Other".
+market_comp_top10_body <- vehicles_SA %>%
+  filter(`Vehicle Make` %in% top10_makes) %>%
+  group_by(`Vehicle Make`, `Vehicle Body Type`) %>%
+  summarise(total_vehicles = sum(`Number of Vehicles`, na.rm = TRUE), .groups = "drop") %>%
+  group_by(`Vehicle Make`) %>%
+  mutate(Body_Rank = rank(-total_vehicles, ties.method = "first"),
+         `Vehicle Body Type` = if_else(Body_Rank > 4, "Other", `Vehicle Body Type`)) %>%
+  group_by(`Vehicle Make`, `Vehicle Body Type`) %>%
+  summarise(total_vehicles = sum(total_vehicles), .groups = "drop") %>%
+  ungroup()
+
+# Order vehicle makes by overall totals and convert the make column to a factor.
+make_order <- market_comp_top10_body %>%
+  group_by(`Vehicle Make`) %>%
+  summarise(total_make = sum(total_vehicles)) %>%
+  arrange(desc(total_make)) %>%
+  pull(`Vehicle Make`)
+
+market_comp_top10_body <- market_comp_top10_body %>%
+  mutate(`Vehicle Make` = factor(`Vehicle Make`, levels = rev(make_order)))
+
+# Order vehicle body types by overall totals and convert to a factor.
+body_type_order <- market_comp_top10_body %>%
+  group_by(`Vehicle Body Type`) %>%
+  summarise(total_overall = sum(total_vehicles)) %>%
+  arrange(desc(total_overall)) %>%
+  pull(`Vehicle Body Type`)
+
+market_comp_top10_body <- market_comp_top10_body %>%
+  mutate(`Vehicle Body Type` = factor(`Vehicle Body Type`, levels = body_type_order))
+
+# Calculate the percentage of each body type within each make.
+market_comp_top10_body <- market_comp_top10_body %>%
+  group_by(`Vehicle Make`) %>%
+  mutate(prop = total_vehicles / sum(total_vehicles)) %>%
+  ungroup()
+
+# Create a horizontal stacked bar chart showing the actual counts.
+p1 <- ggplot(market_comp_top10_body, aes(x = `Vehicle Make`, y = total_vehicles, fill = `Vehicle Body Type`)) + # Create base plot.
+  geom_bar(stat = "identity") + # Plot bars using actual counts.
+  coord_flip() + # Flip coordinates for horizontal display.
+  scale_y_continuous(labels = scales::comma) + # Format y-axis labels with commas.
+  theme_minimal() + # Use a minimal theme.
+  labs(
+    title = "Top 10 Vehicle Makes by Vehicle Body Type", # Set plot title.
+    x = "Vehicle Make", # Label x-axis.
+    y = "Total Number of Vehicles", # Label y-axis.
+    caption = "Figure 1 - Market Composition (Vehicle Count)" # Add caption.
+  )
+
+
+# Create a horizontal 100% stacked bar chart showing proportions.
+p2 <- ggplot(market_comp_top10_body, aes(x = `Vehicle Make`, y = total_vehicles, fill = `Vehicle Body Type`)) + # Create base plot.
+  geom_bar(stat = "identity", position = "fill") + # Plot bars as proportions.
+  coord_flip() + # Flip coordinates for horizontal display.
+  scale_y_continuous(labels = percent_format()) + # Format y-axis labels as percentages.
+  theme_minimal() + # Use a minimal theme.
+  labs(
+    title = "Top 10 Vehicle Makes by Vehicle Body Type (100% Stacked)", # Set plot title.
+    x = "Vehicle Make", # Label x-axis.
+    y = "Proportion of Vehicles", # Label y-axis.
+    caption = "Figure 2 - Market Composition (100% Stacked)" # Add caption.
+  )
+
+
+# Display the plot.
+p1
+
+
+```
+
+-   **Distinct Body-Type Profiles:**\
+    The 100% stacked bar chart in Figure 2 reveals that vehicle body types vary significantly between brands. For example, brands with a high proportion of utility vehicles may experience increased claim frequency and higher repair costs, whereas those with a larger share of sedans may present different risk profiles (ANCAP, 2025).
+
+```{r}
+# Create a horizontal 100% stacked bar chart showing proportions.
+p2 <- ggplot(market_comp_top10_body, aes(x = `Vehicle Make`, y = total_vehicles, fill = `Vehicle Body Type`)) + # Create base plot.
+  geom_bar(stat = "identity", position = "fill") + # Plot bars as proportions.
+  coord_flip() + # Flip coordinates for horizontal display.
+  scale_y_continuous(labels = percent_format()) + # Format y-axis labels as percentages.
+  theme_minimal() + # Use a minimal theme.
+  labs(
+    title = "Top 10 Vehicle Makes by Vehicle Body Type (100% Stacked)", # Set plot title.
+    x = "Vehicle Make", # Label x-axis.
+    y = "Proportion of Vehicles", # Label y-axis.
+    caption = "Figure 2 - Market Composition (100% Stacked)" # Add caption.
+  )
+
+# Display the plot.
+p2
+
+
+```
+
+-   **Geographic Distribution & Regional Trends:**\
+    Figure 3, the choropleth map, highlights regional variations in brand dominance. Urban centers display a diverse mix of brands, while certain rural areas favor specific makes. It is evident that across South Australia, Toyota is the leading brand of vehicle in majority of the postcodes. These geographic patterns are crucial for tailoring where repairers can be expected to repair certain brand vehicles.
+
+```{r}
+
+# Join postal shapes with dominant vehicle make data using postal codes.
+dominant_sf <- postal_shapes_SA %>%
+  inner_join(SA_dominant_vehicle_make, by = c("POA_CODE21" = "Owner PostCode"))
+
+# Rename 'Most Common Vehicle' for easier reference.
+dominant_sf <- dominant_sf %>% 
+  rename(MostCommonVehicle = `Most Common Vehicle`)
+
+# Convert 'MostCommonVehicle' to a factor and reorder levels by frequency.
+dominant_sf <- dominant_sf %>%
+  mutate(MostCommonVehicle = as.factor(MostCommonVehicle))
+
+dominant_sf$MostCommonVehicle <- factor(
+  dominant_sf$MostCommonVehicle, 
+  levels = names(sort(table(dominant_sf$MostCommonVehicle), decreasing = TRUE))
+)
+
+# Create a color palette for the vehicle types using the 'Set2' scheme.
+pal <- colorFactor(
+  palette = brewer.pal(n = length(levels(dominant_sf$MostCommonVehicle)), name = "Set2"),
+  domain = dominant_sf$MostCommonVehicle
+)
+
+# Define ordered levels and corresponding colors for the legend.
+ordered_levels <- levels(dominant_sf$MostCommonVehicle)
+ordered_colors <- pal(ordered_levels)
+
+# Build the Leaflet map for the most common vehicle by postal area.
+leaflet(dominant_sf) %>%
+  addProviderTiles("CartoDB.Positron") %>%  # Add a light-themed base map.
+  addPolygons(
+    fillColor = ~pal(MostCommonVehicle),  # Fill color based on most common vehicle.
+    color = "white",                      # Set polygon borders to white.
+    weight = 1,                           # Border thickness.
+    fillOpacity = 0.7,                    # Fill transparency.
+    popup = ~paste0("<strong>Postal Code:</strong> ", POA_CODE21,
+                    "<br><strong>Most Common Vehicle:</strong> ", MostCommonVehicle)
+  ) %>%
+  addLegend(
+    position = "bottomright",  # Place the legend in the bottom right.
+    colors = ordered_colors,   # Legend colors.
+    labels = ordered_levels,   # Legend labels.
+    title = "Most Common Vehicle",  # Legend title.
+    opacity = 1                # Fully opaque legend.
+  ) %>%
+  addControl(
+    "<strong>Figure 3:</strong> Choropleth Map of Most Common Vehicle", 
+    position = "bottomleft", 
+    className = "map-caption"
+  )
+
+```
+
+## Analysis of Number of Vehicles and Age
+
+This section focuses on the distribution of manufacturing years among the top five vehicle makes, illustrated by a violin plot combined with a box plot (Figure 4). By comparing older and newer vehicles within each make, we gain insights into potential risk implications for insurance underwriting and claims management.
+
+### Key Findings
+
+-   **Age Range and Variability:**\
+    Each violin plot shows the overall shape of the age distribution for a given make, while the box plot overlay provides the median and interquartile range. Makes with a broader distribution span both older and newer models, suggesting diverse ownership patterns and potentially varied claim outcomes.
+
+-   **Risk Implications:**\
+    Older vehicles may lack modern safety features, increasing the likelihood of higher claims frequency and severity (ANCAP, 2025; Australian Government, 2023). Meanwhile, makes that skew toward newer models might present lower risk profiles if advanced safety technology reduces accident severity.
+
+-   **Market and Replacement Cycles:**\
+    A concentration of newer vehicles for a specific make can indicate a strong market presence or faster replacement cycles. The Australian Bureau of Statistics (2023) notes that vehicle turnover often differs between urban and rural areas, potentially influencing repair costs and claims. Understanding these dynamics can help IAG tailor premium strategies.
+
+```{r}
+# Identify the top 5 vehicle makes by the total number of vehicles.
+top5_makes <- vehicles_SA %>%
+  group_by(`Vehicle Make`) %>%
+  summarise(total = sum(`Number of Vehicles`, na.rm = TRUE)) %>%
+  arrange(desc(total)) %>%
+  slice_head(n = 5) %>%
+  pull(`Vehicle Make`)
+
+# Filter the dataset for the top 5 makes and for years after 1960.
+filtered_data <- vehicles_SA %>%
+  filter(`Vehicle Make` %in% top5_makes,
+         `Vehicle Year of Manufacture` > 1960) %>%
+  mutate(`Vehicle Make` = factor(`Vehicle Make`, levels = top5_makes))
+
+# Create a violin plot to show the distribution of manufacturing years for the top 5 vehicle makes.
+ggplot(filtered_data, aes(x = `Vehicle Make`, y = `Vehicle Year of Manufacture`)) +
+  geom_violin(fill = "lightblue", alpha = 0.7) +
+  geom_boxplot(width = 0.1, fill = "white", outlier.shape = NA) +
+  theme_minimal() +
+  labs(
+    title = "Distribution of Vehicle Manufacturing Year for Top 5 Vehicle Makes",
+    x = "Vehicle Make",
+    y = "Vehicle Year of Manufacture",
+    caption = "Figure 4: Distribution of Vehicle Manufacturing Year"
+  )
+
+```
+
+## Analysis on number of vehicles per postcode
+
+This section examines the spatial distribution of vehicle registrations across South Australian postcodes, as visualized by the interactive map (Figure 5). The map highlights total vehicle registrations per postcode, revealing geographic concentrations that may be linked to increased accident rates.
+
+**Concentration of Registrations:**\
+The map clearly shows that certain postcodes have significantly higher vehicle densities. These high-registration areas are likely to experience more traffic congestion, which can elevate the risk of accidents (Australian Government, 2023).
+
+-   **Accident Risk Implications:**\
+    High vehicle density can lead to more frequent interactions on the road, raising the potential for collisions. Industry data suggests that postcodes with greater registration volumes often correlate with a higher incidence of accidents (Insurance Council of Australia, 2025).
+
+-   **Infrastructure and Road Safety:**\
+    Areas with a high number of registered vehicles may require enhanced road safety measures and improved infrastructure. Addressing these issues can help reduce accident frequencies and severity, supporting more effective risk management and premium pricing strategies. Table 1 identifies the postcodes of the highest registered vehicles.
+
+```{r}
+# Join aggregated total vehicles data with spatial data using the postal code.
+vehicles_by_postcode_sf <- postal_shapes_SA %>%
+  inner_join(registered_vechicles_by_postcode, by = c("POA_CODE21" = "Owner PostCode"))
+
+# Create a numeric color palette for total vehicles using a reversed "RdYlGn" scheme.
+pal_total <- colorNumeric(
+  palette = rev(brewer.pal(n = 9, name = "RdYlGn")),
+  domain = vehicles_by_postcode_sf$total_vehicles
+)
+
+# Build the Leaflet map with polygons colored by total vehicles.
+leaflet(vehicles_by_postcode_sf) %>%
+  addProviderTiles("CartoDB.Positron") %>%  # Use a light-themed base map.
+  addPolygons(
+    fillColor = ~pal_total(total_vehicles),  # Set fill color based on total vehicles.
+    color = "white",                         # White borders.
+    weight = 1,                              # Border thickness.
+    fillOpacity = 0.7,                       # Fill transparency.
+    popup = ~paste0("<strong>Postal Code:</strong> ", POA_CODE21,
+                    "<br><strong>Total Vehicles:</strong> ", total_vehicles)
+  ) %>%
+  addLegend(
+    position = "bottomright",  # Place the legend in the bottom right.
+    pal = pal_total,           # Use the defined color palette.
+    values = ~total_vehicles,  # Link the legend to total vehicles.
+    title = "Total Vehicles",  # Legend title.
+    opacity = 1                # Fully opaque legend.
+  ) %>%
+  addControl(
+    html = "<strong>Figure 5:</strong> Map of Total Registered Vehicles by Postal Code",
+    position = "bottomleft",
+    className = "leaflet-control-caption"
+  )
+
+# Create a table of the top 10 postcodes by total registered vehicles.
+top10_postcodes <- registered_vechicles_by_postcode %>%
+  arrange(desc(total_vehicles)) %>%  # Sort in descending order.
+  head(10) %>%
+  rename(`Postcode` = `Owner PostCode`,
+         `Total Vehicles Registered` = total_vehicles)
+
+# Render the top 10 postcodes table using the gt package.
+top10_postcodes %>%
+  gt() %>%
+  tab_header(
+    title = "Table 1: Top 10 Postcodes by Registered Vehicles"
+  )
+
+
+```
+
+## Risk Profile
+
+This section consolidates the insights from previous analyses into a combined **risk score** that reflects both the total volume of registered vehicles and the median manufacturing year per postcode. The risk score is computed by standardising each factor and then combining them to highlight postcodes with potentially higher accident and claim risk.
+
+### Key Findings
+
+**Scatter Plot of Postcodes (Figure 6):**\
+- The scatter plot shows **Total Vehicles** (y-axis) against **Median Vehicle Year** (x-axis), colored by **Risk Score**.\
+- Postcodes with a higher risk score appear toward the upper-left portion (higher vehicle count, older median year), indicating a potentially elevated claim frequency (Insurance Council of Australia, 2025).\
+- Conversely, newer median years combined with lower vehicle volumes are shown in green, suggesting a lower overall risk profile (ANCAP, 2025).
+
+------------------------------------------------------------------------
+
+```{r}
+
+# Join data frames to create an aggregated dataset.
+aggregated_data <- registered_vechicles_by_postcode %>%
+  inner_join(SA_dominant_vehicle_make, by = "Owner PostCode") %>%
+  inner_join(weighted_median_by_postcode, by = "Owner PostCode") %>%
+  rename(MostCommonVehicle = `Most Common Vehicle`)
+
+# Convert MostCommonVehicle to a factor.
+aggregated_data <- aggregated_data %>%
+  mutate(MostCommonVehicle = as.factor(MostCommonVehicle))
+
+# Compute risk scores based on total vehicles and weighted median vehicle year.
+risk_data <- aggregated_data %>%
+  mutate(
+    z_total_vehicles = (total_vehicles - mean(total_vehicles, na.rm = TRUE)) / sd(total_vehicles, na.rm = TRUE),
+    z_median_year = (weighted_median_year - mean(weighted_median_year, na.rm = TRUE)) / sd(weighted_median_year, na.rm = TRUE),
+    risk_score = z_total_vehicles - z_median_year,  # Original risk score.
+    risk_score_adj = risk_score - min(risk_score, na.rm = TRUE)  # Adjusted so that minimum is zero.
+  )
+
+# Create a table of the top 10 riskiest postcodes using the adjusted risk score.
+top_10_risk_postcodes <- risk_data %>%
+  arrange(desc(risk_score_adj)) %>%
+  head(10) %>%
+  select(`Owner PostCode`, total_vehicles, weighted_median_year, risk_score_adj) %>%
+  rename(`Postcode` = `Owner PostCode`,
+         `Total Vehicles Registered` = total_vehicles,
+         `Median Vehicle Year` = weighted_median_year,
+         `Risk Score` = risk_score_adj)
+
+# Plot the risk profile using ggplot2 with a gradient color scale.
+ggplot(risk_data, aes(x = weighted_median_year, y = total_vehicles, color = risk_score_adj)) +
+  geom_point(size = 3) +
+  scale_color_gradient(low = "green", high = "red") +
+  theme_minimal() +
+  labs(title = "Risk Profile of Postcodes",
+       x = "Median Vehicle Year",
+       y = "Total Vehicles",
+       color = "Risk Score",
+       caption = "Figure 6: Risk Profile of Postcodes")
+
+
+
+
+
+```
+
+**Top 10 Postcodes by Risk Rating (Table 2):**\
+- Table 2 highlights the postcodes with the highest computed risk scores.\
+- These areas typically have a large number of registered vehicles and a slightly older median vehicle year. This combination can lead to more frequent mechanical issues and potentially higher accident rates (Australian Government, 2023).\
+- The table provides a quick reference for underwriters, helping IAG identify which areas may require more attention in premium pricing and policy conditions.
+
+```{r}
+
+# Render the table of top 10 risk postcodes using gt.
+top_10_risk_postcodes %>%
+  gt() %>%
+  tab_header(
+    title = "Table 2: Top 10 Postcodes by Risk Rating"
+  )
+
+```
+
+**Map of Risk Profile by Postal Code (Figure 7):**\
+- The choropleth map visually presents each postcode’s risk score, transitioning from green (lower risk) to red (higher risk).\
+- Regions with notably high scores often coincide with urban or semi-urban areas where vehicle density is high and median vehicle age skews older.\
+- The map offers a geographic lens, enabling IAG to tailor localized strategies—such as targeted marketing, specialized underwriting criteria, or collaborations with local authorities to reduce accident risks.
+
+```{r}
+# Join risk data with spatial data using the postal code.
+risk_data_sf <- postal_shapes_SA %>%
+  inner_join(risk_data, by = c("POA_CODE21" = "Owner PostCode"))
+
+# Create a numeric color palette for the adjusted risk score.
+pal_risk <- colorNumeric(
+  palette = c("green", "red"),
+  domain = risk_data_sf$risk_score_adj
+)
+
+# Build the Leaflet map with polygons colored by risk score.
+leaflet(risk_data_sf) %>%
+  addProviderTiles("CartoDB.Positron") %>%  # Use a light-themed base map.
+  addPolygons(
+    fillColor = ~pal_risk(risk_score_adj),   # Fill color based on risk score.
+    color = "white",                         # White borders.
+    weight = 1,                              # Border thickness.
+    fillOpacity = 0.7,                       # Fill transparency.
+    popup = ~paste0("<strong>Postal Code:</strong> ", POA_CODE21,
+                    "<br><strong>Risk Score:</strong> ", round(risk_score_adj, 2))
+  ) %>%
+  addLegend(
+    position = "bottomright",  # Place the legend in the bottom right.
+    pal = pal_risk,            # Use the defined risk color palette.
+    values = ~risk_score_adj,  # Link the legend to risk scores.
+    title = "Risk Score",      # Legend title.
+    opacity = 1                # Fully opaque legend.
+  ) %>%
+  addControl(
+    html = "<strong>Figure 7:</strong> Map of Risk Profile by Postal Code",
+    position = "bottomleft",
+    className = "leaflet-control-caption"
+  )
+
+
+```
+
+## Summary and Recommendations
+
+#### Key Insights
+
+-   **Market Composition:**\
+    Toyota dominates in sheer volume, while Holden and Ford maintain strong representation. Body-type distributions (e.g., sedans vs. utilities) highlight different risk and repair cost implications (ANCAP, 2025).
+
+-   **Geographic Distribution:**\
+    High-density postcodes typically face elevated accident risks. Maps of total registrations and dominant makes underscore the need for region-specific underwriting strategies (Government of South Australia, 2023).
+
+-   **Vehicle Age Analysis:**\
+    Older vehicles often pose higher repair costs and increased accident risks, whereas newer fleets may offer advanced safety features and potentially lower claims (Insurance Council of Australia, 2025).
+
+-   **Integrated Risk Profile:**\
+    By combining vehicle count and median manufacturing year into a unified risk score, we pinpointed postcodes that require closer attention due to higher risk factors. This approach can help IAG optimise premium calculations and underwriting guidelines.
+
+### Recommendations
+
+1.  **Refine Premium Pricing:**
+    -   Incorporate the risk score and vehicle age into pricing models to ensure that higher-risk postcodes and older vehicles are appropriately accounted for.
+2.  **Enhance Underwriting Criteria:**
+    -   Use postcode-level insights to develop targeted underwriting policies, particularly in regions with elevated accident potential or a high proportion of older vehicles.
+3.  **Focus on Risk Mitigation:**
+    -   Engage with local communities or authorities in higher-risk areas to support road safety initiatives, potentially reducing claims frequency over time.
+4.  **Leverage Additional Data:**
+    -   Incorporate safety ratings (e.g., ANCAP) and historical claims data into ongoing analyses to further refine predictive risk models and remain agile in a dynamic market.
+
+## References
+
+ANCAP. (2025). *Safety ratings explained*. Retrieved March 16, 2025, from <https://www.ancap.com.au/safety-ratings-explained>
+
+Australian Bureau of Statistics. (2023). *Motor Vehicle Census, Australia*. Retrieved March 16, 2025, from <https://www.abs.gov.au/statistics/industry/tourism-and-transport>
+
+Australian Government. (2023). *National Road Safety Strategy 2021-2030*. Retrieved March 16, 2025, from <https://www.roadsafety.gov.au/nrss>
+
+Government of South Australia. (2023). *Registered vehicles by postcode*. DataSA. Retrieved from <https://data.sa.gov.au/data/dataset/registered-vehicles-by-postcode>
+
+Insurance Australia Group. (2025). *About IAG*. Retrieved March 15, 2025, from <https://www.iag.com.au/>

@@ -1,0 +1,302 @@
+---
+title: "Challenge 2"
+author: "310247934"
+date: "2025-03-03"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(readr)
+library(tidyverse)
+library(ggplot2)
+library(nycflights13)
+library(patchwork)
+library(knitr)
+data("flights")
+data("airlines")
+data("airports")
+data("planes")
+data("weather")
+view(flights)
+view(airlines)
+view(airports)
+view(planes)
+view(weather)
+
+```
+
+<div style="text-align: center;">
+## Question One
+</div>
+
+*If you’re booking a short or long distance flight, which airline should you choose to avoid delays?*
+
+#### Initial Analysis
+To define whether a flight is considered short or long we will utilise the summary statistics to determine the median and mean values of the flight distance. 
+
+The median flight distance is `r median(flights$distance, na.rm = TRUE)` miles and the mean flight distance is `r round(mean(flights$distance, na.rm = TRUE))` miles. For convenience, we will therefore consider any flight with a distance 1000 miles or more to be considered a long distance flight. 
+
+We will also define the delay as the total delay using the addition of the departure and arrival delay. 
+
+```{r,include=FALSE}
+# Add a new column called flight_length where any distance less than 1000 miles will be deemed short and anything greater than or equal to 1000 will be long. 
+#Add a new column for total_delay by adding the departure and arrival delays. 
+flights_new <- flights %>%
+  mutate(flight_length = if_else(distance < 1000,
+                                   "short",
+                                   "long"))%>%
+  mutate(total_delay = coalesce(dep_delay, 0) + coalesce(arr_delay, 0))
+
+# For clarity rename the name column in the airlines data to airline_name. 
+
+airlines <- airlines %>%
+  rename(airline_name = name)
+
+#Complete a left join on the flights_new to airlines to obtain the airline_name. Complete the join using the common carrier column. 
+
+flights_airlines <- left_join(flights_new, airlines, by = "carrier")
+
+# Compute standard deviation and standard error for the delay estimates to determine whether any airlines have too few flights impacting their mean delays. 
+airline_delays_with_se <- flights_airlines %>%
+  group_by(airline_name, flight_length) %>%
+  summarize(
+    num_flights = n(),
+    avg_total_delay = mean(total_delay, na.rm = TRUE),
+    sd_total_delay = sd(total_delay, na.rm = TRUE)
+  ) %>%
+  mutate(se_delay = sd_total_delay / sqrt(num_flights))
+
+#Filter only on any airlines where the standard error is less than or equal to one otherwise there are too few flights which will be impacting the mean delay time. 
+airline_delays_filtered <- airline_delays_with_se %>%
+  filter(se_delay <= 1)
+
+
+
+# Find the two airlines based shortest delay on the best for short flights and best for long flights
+best_short_airline <- airline_delays_filtered %>% 
+  ungroup() %>%  # Remove any grouping
+  filter(flight_length == "short") %>% 
+  filter(avg_total_delay == min(avg_total_delay, na.rm = TRUE)) %>% 
+  slice(1)
+
+best_long_airline <- airline_delays_filtered %>% 
+  ungroup() %>%  # Remove any grouping
+  filter(flight_length == "long") %>% 
+  filter(avg_total_delay == min(avg_total_delay, na.rm = TRUE)) %>% 
+  slice(1)
+
+```
+``` {r, fig.width=12, fig.height=8}
+# Bar plot for short flights with shortest delays at the top
+short_bar_plot <- airline_delays_filtered %>%
+  filter(flight_length == "short") %>%
+  arrange(avg_total_delay) %>%
+  ggplot(aes(x = reorder(airline_name, -avg_total_delay), y = avg_total_delay)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  coord_flip() +
+  labs(
+    title = "Short Flights: Airlines Sorted by Average Total Delay",
+    x = "Airline Name",
+    y = "Average Total Delay (minutes)"
+  )
+
+
+# Bar plot for long flights with shortest delays at the top
+long_bar_plot <- airline_delays_filtered %>%
+  filter(flight_length == "long") %>%
+  arrange(avg_total_delay) %>%
+  ggplot(aes(x = reorder(airline_name, -avg_total_delay), y = avg_total_delay)) +
+  geom_bar(stat = "identity", fill = "darkblue") +
+  coord_flip() +
+  labs(
+    title = "Long Flights: Airlines Sorted by Average Total Delay",
+    x = "Airline Name",
+    y = "Average Total Delay (minutes)"
+  )
+
+#Side by side bar plots of short and long flights
+short_bar_plot + long_bar_plot
+
+
+```
+
+
+#### Which Airline should you choose based on the analysis?
+
+For short flights, the airline with the shortest average delay is `r best_short_airline$airline_name` with an overall average delay of `r round(best_short_airline$avg_total_delay,2)` minutes.
+For long flights, the airline with the shortest average delay is `r best_long_airline$airline_name` with an overall average delay of `r round(best_long_airline$avg_total_delay,2)` minutes.
+
+
+<div style="text-align: center;">
+## Question Two
+</div>
+
+
+*If you were an airport operations manager, which airline would you be most worried about causing delays at each destination?*
+
+
+```{r, include=FALSE}
+
+# Rename (airport) name to destination_airport_name for clarity
+
+airports_destination <- airports %>%
+  rename(destination_airport_name = name)
+
+#Join previously used flights_airlines and complete left join to airports_destination where dest is equal to faa
+flights_destinations <- left_join(flights_airlines, airports_destination, by = c("dest" = "faa"))
+
+# Compute standard deviation and standard error for the delay estimates to determine whether any destinations have too few flights impacting their mean delays. 
+airport_delays_with_se <- flights_destinations %>%
+  group_by(airline_name, destination_airport_name) %>%
+  summarize(
+    num_flights = n(),
+    avg_total_delay = mean(total_delay, na.rm = TRUE),
+    sd_total_delay = sd(total_delay, na.rm = TRUE)
+  ) %>%
+  mutate(se_delay = sd_total_delay / sqrt(num_flights))
+
+#Filter only on any airlines where the standard error is less than or equal to 3 otherwise there are too few flights which will be impacting the mean delay time. 
+airport_delays_filtered <- airport_delays_with_se %>%
+  filter(se_delay <= 3)
+
+#create a new data frame that lists each airport destination and the airline that has the highest mean total delay time. Remove any result if the mean delay is negative or any result where there is no destination airport listed. 
+
+airport_highest_delays <- airport_delays_filtered %>%
+  group_by(destination_airport_name) %>%
+  slice_max(avg_total_delay, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(destination_airport_name, airline_name, avg_total_delay) %>%
+  filter(!is.na(destination_airport_name), avg_total_delay >= 0) %>%
+  mutate(avg_total_delay = round(avg_total_delay, 2))
+
+
+
+```
+
+
+<div style="text-align: center;">
+#### Highest Average Delays by Airport and Airline
+</div>
+
+From the below table we are able to review each destination airport and the airline that has the highest total average delay in minutes. The operations manager at each airport can therefore review this to determine which airline they should be most concerned with causing the delays. 
+
+
+```{r}
+#Create a presentable table keeping only relevant columns from airport_highlest_delays.
+kable(airport_highest_delays, 
+      col.names = c("Airport Destination Name", "Airline Name", "Average Total Delay (mins)")
+)
+
+
+```
+<div style="text-align: center;">
+## Question Three 
+</div>
+
+*Does bad weather lead to significantly worse delays, or do airlines manage to keep schedules on time?*
+
+```{r, include=FALSE}
+# Rename (airport) name to origin_airport_name for clarity
+airports_origin <- airports %>%
+  rename(origin_airport_name = name)
+
+#Join previously used flights_airlines and complete left join from airports_origin where dest is equal to faa
+flights_origins <- left_join(flights_airlines, airports_origin, by = c("origin" = "faa"))
+
+#Join previously used flights_origins and complete left join from weather on both the origin and time_hour.
+weather_airlines <- left_join(flights_origins, weather, by = c("origin","time_hour"))
+
+#Complete a data clean to remove any lines where there are NA values to not impact the model
+weather_clean <- weather_airlines %>%
+  filter(!is.na(total_delay),
+         !is.na(precip),
+         !is.na(wind_speed),
+         !is.na(visib),
+         !is.na(temp))
+
+#Create two linear models one with the weather factors and one without any factors.
+model_with_weather <- lm(total_delay ~ precip + wind_speed + visib + temp, data = weather_clean)
+
+model_without_weather <- lm(total_delay ~ 1, data = weather_clean)
+
+#Complete an Analysis of Variance (ANOVA) between the two models to determine if the factors of weather impact our model. 
+
+anova_results<-anova(model_without_weather, model_with_weather)
+
+
+
+
+
+```
+
+#### Analysis
+
+First let us create two models to determine if weather has an impact on the overall delay time. 
+
+Model one is going to a linear model which will include the following weather variables; precipitation, windspeed, visibility and temperature.
+
+Model two will be a linear model which will not include any weather variables. 
+
+```{r}
+
+# Define the threshold for very small p-values
+threshold <- 2.2e-16
+
+#Create a table of results from ANOVA of the two models keeping only the F-test and p-values
+
+anova_results_subset <- anova_results[, c("F", "Pr(>F)")]
+colnames(anova_results_subset) <- c("F-Test", "p-Value")
+
+# Replace p-values smaller than threshold with a "less than" string
+anova_results_subset$`p-Value` <- sapply(anova_results_subset$`p-Value`, function(p) {
+  if (!is.na(p) && p < threshold) {
+    "< 2.2e-16"
+  } else if (!is.na(p)) {
+    formatC(p, format = "e", digits = 3)
+  } else {
+    NA
+  }
+})
+
+#Keep only the results from the ANOVA where there aren't NA values
+anova_results_subset <- anova_results_subset[!is.na(anova_results_subset$`F-Test`), ]
+
+
+
+
+```
+
+We will complete an Analysis of Variance (ANOVA) between the two models to determine the F-Test and p-value. 
+
+The F-test is very high (`r round(anova_results_subset[["F-Test"]],2)`) with a p-value `r anova_results_subset[["p-Value"]]`, indicating that weather factors explain a significant portion of the variation in delays.
+
+It can be concluded based on the above information that when the weather is worse we can predict longer delays. 
+
+
+```{r}
+
+# Add predictions from both models to the dataset
+weather_clean <- weather_clean %>%
+  mutate(pred_without = predict(model_without_weather, .),
+         pred_with = predict(model_with_weather, .))
+
+# Overall mean delay from the baseline model
+baseline_mean <- coef(model_without_weather)[1]
+
+# Plot predicted (from weather model) vs. actual total_delay
+ggplot(weather_clean, aes(x = total_delay, y = pred_with)) +
+  geom_point(alpha = 0.3, color = "darkgreen") +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +
+  geom_hline(yintercept = baseline_mean, linetype = "dotted", color = "blue") +
+  labs(title = "Predicted vs Actual Total Delay",
+       subtitle = "Red dashed line: Ideal (predicted = actual); Blue dotted line: Baseline (mean delay)",
+       x = "Actual Total Delay (minutes)",
+       y = "Predicted Total Delay (minutes)") +
+  theme_minimal()
+
+```
+

@@ -1,0 +1,198 @@
+---
+title: "Challenge 4"
+author: "310247934"
+subtitle: "Australian Solar Panels"
+date: "University of Sydney | ODAT5011 |18 March 2025"
+output:
+  html_document: 
+    fig_caption: yes
+    number_sections: no
+    self_contained: yes
+    theme: flatly
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: hide
+
+---
+
+
+```{r setup,include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) # Remove warning messages from R Markdown once knitted
+
+rm(list = ls())  # Remove all existing objects in the environment to avoid conflicts
+gc()  # Perform garbage collection to free up memory
+
+# Load essential libraries
+library(tidyverse)  # Core packages for data manipulation and visualization (includes dplyr, ggplot2, etc.)
+library(lubridate)  # Provides functions for date/time manipulation
+library(ggplot2)  # Visualization package
+library(sf)  # Spatial data analysis and visualization
+library(leaflet)  # Create interactive maps
+library(skimr)  # Provides comprehensive summary statistics
+library(rnaturalearth)  # Contains world country boundary data sets
+library(rnaturalearthdata)  # Supporting package for country boundary data
+library(janitor)  # Provides functions for cleaning and renaming column names
+library(readr) 
+library(patchwork)
+library(knitr)
+library(scales)
+library(ggrepel)
+
+
+# ----------------------------#
+# Read in the Data set
+# ----------------------------#
+
+# Load solar panel installation data
+solar_panels <- read_csv("path", show_col_types = FALSE)
+
+# Load time-series data for solar panel installations
+solar_panels_time <- read_csv("path", show_col_types = FALSE)
+
+# Load Australian postcode dataset (contains postcodes and their corresponding states)
+australian_postcodes <- read_csv("path", show_col_types = FALSE)
+
+# Load spatial postcode shape data (for mapping)
+postal_shapes<-sf::read_sf("path")
+
+# Load data set from CSV file, assuming it is stored in the given path.
+
+
+# -------------------------------
+# FILTERING NSW DATA
+# -------------------------------
+
+# Merge solar panel data with state information
+solar_panels_all_states <- solar_panels %>% 
+    inner_join(australian_postcodes %>% distinct(postcode, state), by = 'postcode')
+
+
+# Merge spatial shape data with solar panel data
+postal_shapes_solar <- postal_shapes %>% 
+    inner_join(solar_panels_all_states, by = c('POA_CODE21' = 'postcode')) %>%  
+    filter(!is.na(density))  # Remove missing density values
+
+
+
+
+```
+
+<div style="text-align: center;">
+## Question One 
+</div>
+
+*Understanding regional differences in solar adoption can help guide future renewable energy policies. If you were advising the government, which state would you recommend for increased solar incentives? Are certain states lagging behind in adoption, and if so, what factors might be influencing this trend? *
+
+#### Analysis
+
+Firstly, let us summarise the data as per Figure 1 below by state to view the total instals, capacity, potential KW and estimated dwellings taken from the solar panels data set. We will also create two new calculations called adoption rate and capacity utilisation. 
+
+Adoption Rate:
+The adoption rate can be calculated by taking the total number of installations and dividing it by the total number of estimated dwellings. This then provides us with the proportion of dwellings within the area that have had solar panels installed. The higher the adoption rate the more dwellings are using solar panels.
+
+Capacity Utilisation:
+This is the ratio of the total installed solar capacity (in kilowatts) to the total potential solar capacity available in the area. This calculation provides insight into how much of the areas total potential capacity is actually being used through installing solar panels.
+
+
+```{r}
+
+
+
+#Complete a summary at a state level
+state_summary <- solar_panels_all_states %>%
+  group_by(state) %>%
+  summarize(
+    total_instals = sum(instals, na.rm = TRUE),
+    total_capacity = sum(capacity, na.rm = TRUE),
+    total_potential_kw = sum(pot_kw, na.rm = TRUE),
+    total_estimated_dwellings = sum(estimated_dwellings, na.rm = TRUE)
+  )
+
+
+#Calculate the adoption rate and capacity utilisation
+state_summary <- state_summary %>%
+  mutate(
+    adoption_rate = (total_instals / total_estimated_dwellings) * 100,
+    capacity_utilisation = (total_capacity / total_potential_kw) * 100
+  )
+
+#Create a table summary view
+state_summary %>% 
+  kable(
+    caption = "Figure 1: Solar Panel Summary by State",
+    col.names = c("State", "Total Instals", "Total Capacity", "Total Potential KW", 
+                  "Total Estimated Dwellings", "Adoption Rate (%)", "Capacity Utilisation (%)")
+  )
+
+
+
+```
+
+
+
+Figure 2 below provides a side by side comparison by state of the states in order of the highest adoption rate and the highest capacity utilisation rate. We can see that QLD is the top state in both of these implying that it is outperforming the states in both of these metrics. NT on the other hand has a high capacity utilisation but a lower adoption rate. It is possible that it has larger plants installed which are leading to its higher capacity utilisation. 
+
+```{r}
+
+# Bar plot for solar adoption rate by state 
+plot_adoption <- ggplot(state_summary, 
+                        aes(x = reorder(state, adoption_rate), 
+                            y = adoption_rate, 
+                            fill = adoption_rate)) +
+  geom_bar(stat = "identity") +
+  scale_fill_gradient(low = "red", high = "green") +
+  labs(x = "State", y = "Adoption Rate (%)", title = "Solar Adoption Rate by State") +
+  theme_minimal() +
+  coord_flip() +
+  theme(legend.position = "none")
+
+# Bar plot for solar capacity utilisation by state
+plot_capacity <- ggplot(state_summary, 
+                        aes(x = reorder(state, capacity_utilisation), 
+                            y = capacity_utilisation, 
+                            fill = capacity_utilisation)) +
+  geom_bar(stat = "identity") +
+  scale_fill_gradient(low = "red", high = "green") +
+  labs(x = "State", y = "Capacity Utilisation (%)", title = "Solar Capacity Utilisation by State") +
+  theme_minimal() +
+  coord_flip() +
+  theme(legend.position = "none")
+
+# Combine the two plots side by side
+combined_plot <- plot_adoption + plot_capacity +
+  plot_annotation(caption = "Figure 2: Solar Adoption and Capacity Utilisation by State")
+print(combined_plot)
+```
+
+
+In summary of Figure 1 and Figure 2, the below Figure 3 combines this information together. The red line shows the line of best fit through each of the states. Whereas the green dotted line shows a 45 degree angle implying that the adoption and capacity rates are equal. 
+
+We can from Figure 3 that for all states their adoption rate is higher than that of their capacity utilisation rate. Across all states there is therefore the potential to increase their capacity utilisation rates. NT is the state that has both of these metrics closest together as it is closest to the green dotted line. If it continues along this trajectory then it will potentially be the leading state. As aforementioned we can visually now see that QLD is also outperforming the other states in both metrics. It is evident from Figure 3 that TAS is lowest performing state in these two metrics closely followed by VIC. 
+
+In summary focus should be places on TAS and VIC to improve both their adoption and capacity utilisation rates. Across all states improvement can be made in their capacity utilisation rates implying that there could be bigger plants built to draw on their potential solar capacity.
+
+
+
+```{r}
+#Scatter plot with line of best fit and 45 degree angle line
+ggplot(state_summary, aes(x = adoption_rate, y = capacity_utilisation, label = state)) +
+  geom_point(color = "blue", size = 3) +
+  geom_text_repel() +
+  # Best-fit line (red, solid) through the origin
+  geom_smooth(method = "lm", formula = y ~ x + 0, se = FALSE, 
+              color = "red", linetype = "solid", fullrange = TRUE) +
+  # 45-degree line (green, dashed)
+  geom_abline(slope = 1, intercept = 0, color = "darkgreen", linetype = "dashed") +
+  labs(title = "Solar Adoption vs Capacity Utilisation by State",
+       x = "Adoption Rate (%)",
+       y = "Capacity Utilisation (%)",
+       caption = str_wrap("Figure 3: Scatter plot showing the relationship between solar adoption rate and capacity utilisation by state. The red line is the best-fit line through the origin and the green dashed line represents a 45-degree reference line.", width = 80)) +
+  scale_x_continuous(limits = c(0, NA)) +
+  scale_y_continuous(limits = c(0, NA)) +
+  theme_minimal() +
+  theme(
+    plot.caption = element_text(hjust = 0, size = 10),
+    plot.margin = margin(t = 10, r = 10, b = 30, l = 10)
+  )
+```

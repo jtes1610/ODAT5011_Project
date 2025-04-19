@@ -2,7 +2,7 @@
 
 ### University of Sydney — ODAT5011 Project 2
 
-**Author:** James Tesoriero\
+**Author:** 310247934\
 **Date:** April 2025
 
 ------------------------------------------------------------------------
@@ -41,8 +41,10 @@ ODAT5011_Project/
 │   ├── server.R               # Server logic: reactive expressions, outputs
 │   ├── ui.R                   # User interface layout: input controls, layout
 │   ├── app_data/              # ✅ Pre-cleaned and transformed datasets
-│   │   ├── vinho_verde_data.rds                # Cleaned Vinho Verde data
-│   │   └── wine_reviews_portugal_clean.rds     # Cleaned Portuguese reviews
+│   │   ├── vinho_verde_train_set.rds          # Training set for modelling
+│   │   ├── vinho_verde_test_set.rds           # Test set for evaluation
+│   │   ├── wine_all.rds                        # Combined red and white wine data
+│   │   └── wine_reviews_portugal_clean.rds    # Cleaned Portuguese reviews
 │   └── models/                # ✅ Pre-trained models (loaded at runtime)
 │       ├── rf_model.rds                         # Ranger regression model
 │       └── of_model.rds                         # Ordinal Forest model
@@ -54,6 +56,7 @@ ODAT5011_Project/
 │
 ├── scripts/                   # 📑 Reports and offline processing scripts
 │   ├── ODAT5011_Wine_Report_Analysis.qmd      # Quarto report for academic submission
+│   ├── prepare_data_for_app.qmd               # Script for generating .rds datasets
 │   └── train_models.R                         # 🔁 Offline model training script
 │
 ├── README.md                  # 📘 Project overview and deployment instructions
